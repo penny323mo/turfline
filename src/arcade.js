@@ -1,0 +1,688 @@
+import { horses, cameras } from "./data.js";
+import { icon } from "./icons.js";
+import {
+  newGame,
+  markets,
+  styles,
+  odds,
+  returns,
+  wager,
+  cancel,
+  start,
+  changeSpeed,
+  elapsed,
+  snapshot,
+  settle,
+  next,
+  refill,
+  LENGTH,
+} from "./race.js";
+import { openGameSave } from "./game-save.js";
+import { raceAudio } from "./race-audio.js";
+
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, "0");
+const format = (n) => n.toLocaleString("zh-HK");
+const time = (t) =>
+  Math.floor(t / 60) +
+  ":" +
+  Math.floor(t % 60)
+    .toString()
+    .padStart(2, "0") +
+  "." +
+  Math.floor((t % 1) * 100)
+    .toString()
+    .padStart(2, "0");
+const marketHints = {
+  win: "選中第一名馬匹",
+  place: "選中頭兩名其中一匹",
+  pair: "選中頭兩名馬匹，次序不限",
+};
+const picksText = (picks) =>
+  picks.map((i) => horses[i].number + " " + horses[i].name).join(" ＋ ");
+const status = (msg) => {
+  $("message").textContent = msg;
+};
+const audio = raceAudio();
+let game = newGame(),
+  save,
+  stage,
+  market = "win",
+  busy = false,
+  ready = false,
+  settling = false,
+  lastOrder = "",
+  lastPhase = "",
+  lastBell = "",
+  radar = null;
+const cameraState = {
+  selected: 0,
+  cam: "track",
+  time: 0.8,
+  paused: false,
+  visible: true,
+  speed: 1,
+  courseFrame() {
+    if (game.race.phase === "open") return null;
+    return { ...snapshot(game.race), stopped: game.race.phase === "settled" };
+  },
+};
+document.querySelectorAll("[data-icon]").forEach((el) => {
+  el.outerHTML = icon(el.dataset.icon);
+});
+const options = horses
+  .map(
+    (h, i) =>
+      '<option value="' +
+      i +
+      '">' +
+      pad(h.number) +
+      "　" +
+      h.name +
+      "</option>",
+  )
+  .join("");
+for (const key of ["pick", "second", "fs-horse"]) $(key).innerHTML = options;
+$("second").value = "1";
+$("fs-camera").innerHTML = cameras
+  .map((c) => '<option value="' + c.id + '">' + c.name + "</option>")
+  .join("");
+$("camera-switch").innerHTML = cameras
+  .map(
+    (c, i) =>
+      '<button type="button" data-cam="' +
+      c.id +
+      '" title="' +
+      (i + 1) +
+      "　" +
+      c.name +
+      '">' +
+      icon(c.icon) +
+      c.name +
+      "</button>",
+  )
+  .join("");
+const quickFocus = document.createElement("select");
+quickFocus.className = "quick-focus";
+quickFocus.setAttribute("aria-label", "直播焦點馬匹");
+quickFocus.innerHTML = options;
+$("sound").before(quickFocus);
+function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
+  cameraState.selected = horse;
+  cameraState.cam = cam;
+  const h = horses[horse],
+    i = cameras.findIndex((c) => c.id === cam);
+  $("hero-bib").textContent = pad(h.number);
+  $("hero-name").textContent = h.name;
+  $("hero-en").textContent = h.en.toUpperCase();
+  $("cam-label").textContent = radar
+    ? "2D　/　RACE RADAR"
+    : "CAM " + pad(i + 1) + "　/　" + cameras[i].en;
+  $("tracking-mark").textContent = pad(h.number);
+  $("fs-horse").value = quickFocus.value = String(horse);
+  $("fs-camera").value = cam;
+  for (const b of $("camera-switch").children)
+    b.setAttribute("aria-pressed", String(b.dataset.cam === cam));
+  for (const row of $("field-body").rows) {
+    const active = Number(row.dataset.i) === horse;
+    row.classList.toggle("tracked", active);
+    row.querySelector(".follow").setAttribute("aria-pressed", String(active));
+  }
+  stage?.cut();
+  if (radar) drawRadar();
+}
+function field() {
+  const r = game.race;
+  $("field-body").innerHTML = horses
+    .map(
+      (h, i) =>
+        '<tr data-i="' +
+        i +
+        '"><td><span class="rank"></span><span class="number-tile" style="--silk:' +
+        h.color +
+        '">' +
+        pad(h.number) +
+        '</span></td><td><button class="horse-cell" data-focus="' +
+        i +
+        '">' +
+        h.name +
+        '<span class="sr-only">，追蹤此馬</span></button><small class="horse-latin">' +
+        h.en +
+        '</small></td><td class="style-col">' +
+        styles[i] +
+        "</td><td>" +
+        odds(r, "win", [i]).toFixed(1) +
+        "</td><td>" +
+        odds(r, "place", [i]).toFixed(1) +
+        '</td><td><button data-focus="' +
+        i +
+        '" class="follow" aria-label="追蹤' +
+        h.name +
+        '">' +
+        icon("focus") +
+        "</button></td></tr>",
+    )
+    .join("");
+  lastOrder = "";
+  $("rank-label").textContent = r.phase === "open" ? "馬號" : "位 / 號";
+  $("field-title").textContent =
+    r.phase === "open"
+      ? "出馬表"
+      : r.phase === "running"
+        ? "即時走位"
+        : "完成名次";
+  updateCamera();
+}
+function selectedPicks() {
+  const first = Number($("pick").value);
+  return market === "pair" ? [first, Number($("second").value)] : [first];
+}
+function quote() {
+  const picks = selectedPicks(),
+    stake = Number($("stake").value);
+  const price = odds(game.race, market, picks),
+    valid =
+      Number.isSafeInteger(stake) &&
+      stake >= 10 &&
+      stake % 10 === 0 &&
+      stake <= game.balance;
+  $("price").textContent = price.toFixed(1) + "×";
+  $("potential").textContent = valid ? format(returns(stake, price)) : "—";
+  $("stake-error").textContent = valid
+    ? ""
+    : stake > game.balance
+      ? "代幣餘額不足。"
+      : "注碼由 10 枚起，請輸入 10 的倍數。";
+  $("confirm").disabled =
+    busy || game.race.phase !== "open" || !valid || !ready;
+  for (const b of $("chips").children)
+    b.setAttribute("aria-pressed", String(Number(b.dataset.stake) === stake));
+}
+function pickMarket(key) {
+  market = key;
+  $("second-field").hidden = market !== "pair";
+  for (const opt of $("second").options)
+    opt.disabled = opt.value === $("pick").value;
+  if ($("second").value === $("pick").value)
+    $("second").value = String((Number($("pick").value) + 1) % 6);
+  for (const b of $("market-tabs").children)
+    b.setAttribute("aria-pressed", String(b.dataset.market === market));
+  $("market-hint").textContent = marketHints[key];
+  quote();
+}
+function ladder(order) {
+  return (
+    '<ol class="live-order">' +
+    order
+      .map(
+        (i, j) =>
+          '<li><button data-follow="' +
+          i +
+          '" aria-label="跟拍' +
+          horses[i].name +
+          '"><em>' +
+          pad(j + 1) +
+          '</em><span class="lane-colour" style="background:' +
+          horses[i].color +
+          '"></span><b>' +
+          horses[i].name +
+          '</b><small data-gap="' +
+          i +
+          '"></small></button></li>',
+      )
+      .join("") +
+    "</ol>"
+  );
+}
+function ticketPanel() {
+  const r = game.race;
+  $("ticket-count").textContent = r.tickets.length + " 張";
+  if (!r.tickets.length) {
+    $("ticket-list").innerHTML =
+      '<p class="empty-ticket">' +
+      (r.phase === "open"
+        ? "選好馬匹及注碼，再按「確認投注」。"
+        : "今場以觀眾身分睇賽。") +
+      "</p>";
+    return;
+  }
+  $("ticket-list").innerHTML = r.tickets
+    .map(
+      (t, i) =>
+        '<div class="ticket"><div><b>' +
+        markets[t.market] +
+        "　" +
+        picksText(t.picks) +
+        "</b><small>" +
+        format(t.stake) +
+        " 枚　× " +
+        t.price.toFixed(1) +
+        "</small></div>" +
+        (r.phase === "open"
+          ? '<button data-cancel="' +
+            i +
+            '" aria-label="取消第 ' +
+            (i + 1) +
+            ' 張注單">取消</button>'
+          : r.phase === "settled"
+            ? "<strong>" +
+              (t.paid ? "派彩 " + format(t.paid) : "未中") +
+              "</strong>"
+            : "<small>已封盤</small>") +
+        "</div>",
+    )
+    .join("");
+}
+function display() {
+  const r = game.race,
+    opened = r.phase === "open",
+    done = r.phase === "settled";
+  $("balance").textContent = format(game.balance);
+  $("meet-name").textContent = r.name;
+  $("meet-number").textContent = "R" + pad(r.number);
+  $("bet-form").hidden = !opened;
+  $("closed").hidden = opened;
+  $("start").hidden = !opened;
+  $("start").disabled = !ready || busy;
+  $("speed").hidden = r.phase !== "running";
+  $("speed").textContent = "轉播 " + r.speed + "×";
+  $("phase").textContent = opened
+    ? "接受投注"
+    : done
+      ? "賽事完成"
+      : "賽事進行中";
+  $("live-status").textContent = opened ? "PADDOCK" : done ? "RESULT" : "LIVE";
+  $("subject-label").textContent = opened ? "PADDOCK FEED" : "TRACKING";
+  $("refill").hidden = !(opened && game.balance < 10 && !r.tickets.length);
+  $("field-tag").textContent = opened
+    ? "6 匹出賽"
+    : done
+      ? "正式賽果"
+      : "場上排名";
+  $("closed").innerHTML = done
+    ? '<div class="eyebrow small">OFFICIAL RESULT</div><h3>' +
+      horses[r.settlement.order[0]].name +
+      " 勝出</h3><p>派彩 " +
+      format(r.settlement.paid) +
+      " 枚　·　投注 " +
+      format(r.settlement.stake) +
+      " 枚</p>" +
+      ladder(r.settlement.order) +
+      '<button class="next-race" id="next">下一場賽事　→</button>'
+    : '<div class="eyebrow small">BETTING CLOSED</div><h3>投注已封盤</h3><p>本場已確認 ' +
+      r.tickets.length +
+      ' 張注單。點選下列馬匹可即時跟拍。</p><div id="running-ladder"></div>';
+  if (done)
+    for (const slot of $("closed").querySelectorAll("[data-gap]"))
+      slot.textContent = time(r.plan[Number(slot.dataset.gap)].finish);
+  if (done) $("next").onclick = () => act((g) => next(g), "新一場已開放投注。");
+  $("result").hidden = !done;
+  if (done) {
+    const s = r.settlement;
+    $("result").innerHTML =
+      '<div class="eyebrow small">OFFICIAL RESULT　/　R' +
+      pad(r.number) +
+      '</div><div class="podium">' +
+      s.order
+        .slice(0, 3)
+        .map(
+          (i, j) =>
+            "<span><strong>" +
+            pad(j + 1) +
+            "</strong>" +
+            horses[i].name +
+            "</span>",
+        )
+        .join("") +
+      '</div><p class="result-summary">頭馬時間 ' +
+      time(r.plan[s.order[0]].finish) +
+      "　·　本場淨額 " +
+      (s.paid - s.stake >= 0 ? "+" : "") +
+      format(s.paid - s.stake) +
+      " 枚</p>";
+  }
+  cameraState.speed = r.phase === "running" ? r.speed : 1;
+  field();
+  ticketPanel();
+  quote();
+  tick();
+}
+async function readLatest() {
+  if (!save) return;
+  game = await save.read();
+  display();
+}
+async function act(change, message = "", guard = game.race.number) {
+  if (!ready || busy) return;
+  busy = true;
+  quote();
+  $("start").disabled = true;
+  try {
+    game = await save.update((g) => {
+      if (g.race.number !== guard) throw Error("場次已更新，請重新選擇。");
+      change(g);
+    });
+    status(message);
+  } catch (e) {
+    status(e.message);
+    game = await save.read();
+  } finally {
+    busy = false;
+    display();
+  }
+}
+function tick() {
+  const r = game.race,
+    live = r.phase === "running";
+  if (lastPhase !== r.phase) {
+    lastPhase = r.phase;
+    stage?.cut();
+  }
+  let snap;
+  if (!r.plan) {
+    $("distance-label").textContent = "起步至終點　1,200 米";
+    $("progress").style.width = "0%";
+    $("countdown").hidden = true;
+  } else {
+    snap = snapshot(r);
+    const count = Math.ceil(-snap.t);
+    $("countdown").hidden = !live || count <= 0;
+    if (count > 0) $("countdown").textContent = count;
+    $("distance-label").textContent =
+      (live && count > 0
+        ? "即將起步"
+        : snap.remaining
+          ? "餘下 " + format(snap.remaining) + " 米"
+          : "已過終點") +
+      "　·　" +
+      time(Math.max(0, snap.t));
+    $("progress").style.width =
+      ((LENGTH - snap.remaining) / LENGTH) * 100 + "%";
+    const order = r.settlement?.order ?? snap.order,
+      k = order.join("-");
+    if (k !== lastOrder) {
+      lastOrder = k;
+      if ($("running-ladder")) $("running-ladder").innerHTML = ladder(order);
+      const rows = Array.from($("field-body").rows);
+      order.forEach((idx, rank) => {
+        const row = rows.find((row) => Number(row.dataset.i) === idx);
+        if (row) {
+          row.querySelector(".rank").textContent = rank + 1;
+          $("field-body").append(row);
+        }
+      });
+    }
+    if (live) {
+      const leader = snap.ds[order[0]];
+      for (const slot of $("closed").querySelectorAll("[data-gap]")) {
+        const i = Number(slot.dataset.gap);
+        slot.textContent =
+          snap.t <= 0
+            ? "待起步"
+            : snap.ds[i] >= LENGTH
+              ? "已衝線"
+              : i === order[0]
+                ? "領先"
+                : "−" + Math.max(0, leader - snap.ds[i]).toFixed(1) + " m";
+      }
+    }
+    if (live && snap.t >= 0 && lastBell !== r.number) {
+      lastBell = r.number;
+      audio.bell();
+    }
+    audio.step(live && snap.t >= 0);
+    if (
+      live &&
+      !busy &&
+      !settling &&
+      snap.t >= Math.max(...r.plan.map((h) => h.finish))
+    ) {
+      settling = true;
+      act((g) => settle(g), "賽果已確認，派彩已計入餘額。").finally(() => {
+        settling = false;
+      });
+    }
+  }
+  if (radar) drawRadar(snap);
+}
+$("closed").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-follow]");
+  if (b) updateCamera(Number(b.dataset.follow));
+});
+$("bet-form").onsubmit = (e) => {
+  e.preventDefault();
+  const ticket = {
+    market,
+    picks: selectedPicks(),
+    stake: Number($("stake").value),
+    id: crypto.randomUUID(),
+  };
+  act(
+    (g) => wager(g, ticket),
+    "已落注　" +
+      markets[market] +
+      " · " +
+      picksText(ticket.picks) +
+      " · " +
+      ticket.stake +
+      " 枚",
+  );
+};
+$("ticket-list").onclick = (e) => {
+  const b = e.target.closest("[data-cancel]");
+  if (b) {
+    const id = game.race.tickets[Number(b.dataset.cancel)]?.id;
+    act((g) => cancel(g, id), "注單已取消，代幣已退回。");
+  }
+};
+$("refill").onclick = () => act((g) => refill(g), "已領取 1,000 枚遊戲代幣。");
+$("start").onclick = () => act((g) => start(g), "本場已封盤。");
+$("speed").onclick = () => {
+  const speed = game.race.speed === 1 ? 2 : 1;
+  act((g) => changeSpeed(g, speed));
+};
+$("market-tabs").onclick = (e) => {
+  const b = e.target.closest("[data-market]");
+  if (b) pickMarket(b.dataset.market);
+};
+$("pick").onchange = () => pickMarket(market);
+$("second").onchange = quote;
+$("stake").oninput = quote;
+function setStake(n) {
+  $("stake").value = String(n);
+  quote();
+}
+$("chips").onclick = (e) => {
+  const b = e.target.closest("[data-stake]");
+  if (b) setStake(Number(b.dataset.stake));
+};
+$("less").onclick = () =>
+  setStake(Math.max(10, (Number($("stake").value) || 0) - 10));
+$("more").onclick = () => setStake((Number($("stake").value) || 0) + 10);
+$("camera-switch").onclick = (e) => {
+  const b = e.target.closest("[data-cam]");
+  if (b) updateCamera(cameraState.selected, b.dataset.cam);
+};
+$("field-body").onclick = (e) => {
+  const b = e.target.closest("[data-focus]");
+  if (b) updateCamera(Number(b.dataset.focus));
+};
+$("fs-horse").onchange = quickFocus.onchange = (e) =>
+  updateCamera(Number(e.target.value));
+$("fs-camera").onchange = (e) =>
+  updateCamera(cameraState.selected, e.target.value);
+$("sound").onclick = async () => {
+  try {
+    const on = await audio.toggle();
+    $("sound").textContent = "音效 " + (on ? "開" : "關");
+    $("sound").setAttribute("aria-pressed", String(on));
+    $("sound").setAttribute("aria-label", on ? "關閉賽場音效" : "開啟賽場音效");
+  } catch {
+    status("此瀏覽器未能播放音效。");
+  }
+};
+$("full").onclick = async () => {
+  const el = $("stage");
+  if (document.fullscreenElement) await document.exitFullscreen();
+  else if (el.requestFullscreen) {
+    try {
+      await el.requestFullscreen();
+    } catch {
+      el.classList.toggle("expanded");
+    }
+  } else el.classList.toggle("expanded");
+  fullInfo();
+};
+function fullInfo() {
+  const full =
+    !!document.fullscreenElement || $("stage").classList.contains("expanded");
+  $("full").innerHTML = icon(full ? "shrink" : "expand");
+  $("full").setAttribute("aria-label", full ? "離開全螢幕" : "全螢幕");
+}
+document.addEventListener("fullscreenchange", fullInfo);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("stage").classList.contains("expanded")) {
+    $("stage").classList.remove("expanded");
+    fullInfo();
+  }
+  if (
+    $("dialog").open ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.altKey ||
+    /INPUT|SELECT/.test(e.target.tagName)
+  )
+    return;
+  if (["1", "2", "3"].includes(e.key))
+    updateCamera(cameraState.selected, cameras[Number(e.key) - 1].id);
+});
+function dialog(title, html) {
+  $("dialog-title").textContent = title;
+  $("dialog-body").innerHTML = html;
+  $("dialog").showModal();
+}
+$("close").onclick = () => $("dialog").close();
+$("dialog").onclick = (e) => {
+  if (e.target === $("dialog")) $("dialog").close();
+};
+$("rules-button").onclick = () =>
+  dialog(
+    "遊戲玩法",
+    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>按封盤開跑開始賽事。即使冇落注亦可以睇。用名單揀焦點馬匹，按 1、2、3 切鏡，可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
+  );
+$("history-button").onclick = () =>
+  dialog(
+    "最近賽績",
+    game.history.length
+      ? game.history
+          .map(
+            (r) =>
+              '<details class="history-row"><summary>R' +
+              pad(r.number) +
+              "　" +
+              r.name +
+              "　·　派彩 " +
+              format(r.paid) +
+              "</summary><p>" +
+              r.order.map((i, j) => j + 1 + ". " + horses[i].name).join("　") +
+              "</p><p>投注 " +
+              format(r.stake) +
+              " 枚　·　派彩 " +
+              format(r.paid) +
+              " 枚</p>" +
+              r.tickets
+                .map(
+                  (t) =>
+                    "<p>" +
+                    markets[t.market] +
+                    "　" +
+                    picksText(t.picks) +
+                    "　" +
+                    t.stake +
+                    " × " +
+                    t.price.toFixed(1) +
+                    "　→　" +
+                    t.paid +
+                    " 枚</p>",
+                )
+                .join("") +
+              "</details>",
+          )
+          .join("")
+      : '<p class="empty-ticket">第一場完賽後，呢度會記錄名次、注項同派彩。</p>',
+  );
+function drawRadar(s = snapshotIfRunning()) {
+  const ctx = radar.getContext("2d"),
+    w = radar.width,
+    h = radar.height;
+  ctx.fillStyle = "#395839";
+  ctx.fillRect(0, 0, w, h);
+  const maxD = s ? Math.max(...s.ds) : 0;
+  for (const [i, horse] of horses.entries()) {
+    const y = h * (0.22 + i * 0.108);
+    ctx.strokeStyle = "#8ea885";
+    ctx.beginPath();
+    ctx.moveTo(w * 0.05, y + 10);
+    ctx.lineTo(w * 0.95, y + 10);
+    ctx.stroke();
+    const x = s
+      ? w * (0.12 + (0.75 * Math.max(0, s.ds[i])) / Math.max(LENGTH, maxD))
+      : w * (0.28 + i * 0.06);
+    ctx.fillStyle = horse.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#101410";
+    ctx.textAlign = "center";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(String(i + 1), x, y + 5);
+    if (i === cameraState.selected) {
+      ctx.strokeStyle = "#d9f66b";
+      ctx.beginPath();
+      ctx.arc(x, y, 16, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+function snapshotIfRunning() {
+  return game.race.plan ? snapshot(game.race) : null;
+}
+async function init() {
+  save = await openGameSave();
+  game = await save.read();
+  save.channel?.addEventListener("message", () =>
+    readLatest().catch(() => status("同步失敗，重新載入可繼續。")),
+  );
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) readLatest();
+  });
+  pickMarket("win");
+  display();
+  try {
+    const { startStage } = await import("./stage.js");
+    stage = await startStage($("race-canvas"), cameraState, () => {});
+    $("stage").dataset.render = "3d";
+  } catch (err) {
+    console.warn("3D rendering unavailable", err);
+    radar = document.createElement("canvas");
+    radar.width = 760;
+    radar.height = 380;
+    $("race-canvas").replaceWith(radar);
+    const note = document.createElement("span");
+    note.className = "fallback-note";
+    note.textContent = "2D 走位圖 · 3D 需 WebGL 2";
+    $("stage").append(note);
+    $("stage").dataset.render = "2d";
+    $("camera-switch").hidden = true;
+    $("fs-camera").disabled = true;
+  }
+  $("loading").hidden = true;
+  ready = true;
+  display();
+  if (save.temporary) status("此瀏覽器只可暫存，關閉頁面後會重新開始。");
+  setInterval(tick, 100);
+}
+init().catch((e) => {
+  $("loading").textContent = "未能開啟遊戲，請重新載入。";
+  console.error(e);
+});

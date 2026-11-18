@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101310" />
+    <title>Turfline ｜ 賽馬直播廳</title>
+    <link rel="icon" type="image/svg+xml" href="./turfline.svg" />
+    <link rel="stylesheet" href="./src/style.css" />
+    <link rel="stylesheet" href="./src/game.css" />
+  </head>
+  <body class="arcade">
+    <header class="topbar">
+      <div class="top-inner">
+        <a href="./" class="brand" aria-label="Turfline 首頁"
+          ><img src="./turfline.svg" alt="" /><strong
+            >TURFLINE<span>.</span></strong
+          ></a
+        >
+        <div class="brand-divider"></div>
+        <nav aria-label="主要導覽">
+          <a href="./" class="nav-link current"
+            ><i data-icon="broadcast"></i>賽事直播</a
+          ><button class="nav-link" id="history-button">賽績</button
+          ><a class="nav-link" href="./studio.html#library">模型庫</a>
+        </nav>
+        <div class="top-end">
+          <span class="wallet"
+            ><span class="coin">T</span><strong id="balance">—</strong
+            ><small>代幣</small></span
+          ><button
+            class="icon-btn help"
+            id="rules-button"
+            aria-label="遊戲玩法"
+          >
+            <i data-icon="help"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+    <main>
+      <div class="intro">
+        <div>
+          <div class="eyebrow">
+            <span class="dash"></span>RACE DAY
+            <span class="race-index" id="meet-number">R01</span>
+          </div>
+          <h1>
+            <span id="meet-name">翠谷短途盃</span
+            ><span class="title-dot">.</span>
+          </h1>
+        </div>
+        <div class="meet">
+          <i data-icon="flag"></i>
+          <div>
+            <strong>翠谷馬場</strong><small>草地　/　1,200 M　/　6 匹</small>
+          </div>
+        </div>
+      </div>
+      <div class="game-grid">
+        <section class="viewer-box" aria-label="3D 賽事轉播">
+          <div class="stage" id="stage">
+            <canvas
+              id="race-canvas"
+              aria-label="六匹賽駒與騎師的 3D 賽事轉播"
+            ></canvas>
+            <div class="vignette"></div>
+            <div class="feed-meta">
+              <span class="live"
+                ><b></b><span id="live-status">PADDOCK</span></span
+              ><span class="feed-id" id="cam-label">CAM 01　/　TRACKSIDE</span>
+            </div>
+            <button class="fullscreen" id="full" aria-label="全螢幕">
+              <i data-icon="expand"></i>
+            </button>
+            <div id="countdown" class="countdown" hidden></div>
+            <div class="lower-third">
+              <div class="feed-kicker">
+                <b></b><span id="subject-label">PADDOCK FEED</span>
+              </div>
+              <div class="horse-title">
+                <span class="hero-bib" id="hero-bib">01</span>
+                <h2 id="hero-name">赤焰流星</h2>
+              </div>
+              <div class="horse-en" id="hero-en">CRIMSON COMET</div>
+            </div>
+            <div class="broadcast-mark">
+              <span class="signal-bars"><b></b><b></b><b></b><b></b></span
+              >TURFLINE TV
+            </div>
+            <span id="tracking-mark" hidden>01</span>
+            <div class="fs-tools">
+              <label
+                >焦點<select
+                  id="fs-horse"
+                  aria-label="全屏焦點馬匹"
+                ></select></label
+              ><label
+                >機位<select id="fs-camera" aria-label="全屏鏡頭"></select
+              ></label>
+            </div>
+            <div class="loading" id="loading" role="status">
+              <b class="loader"></b>正在載入馬場
+            </div>
+          </div>
+          <div class="live-controls">
+            <div class="camera-switch" id="camera-switch"></div>
+            <button
+              class="sounds"
+              id="sound"
+              aria-label="開啟賽場音效"
+              title="賽場音效"
+              aria-pressed="false"
+            >
+              音效 關
+            </button>
+          </div>
+          <div class="broadcast-strip">
+            <div>
+              <div class="race-state">
+                <b></b><strong id="phase">接受投注</strong>
+              </div>
+              <small id="distance-label">起步至終點　1,200 米</small>
+            </div>
+            <div class="race-progress"><span id="progress"></span></div>
+            <button class="start-btn" id="start" disabled>封盤開跑　▶</button
+            ><button class="start-btn" id="speed" hidden>轉播 1×</button>
+          </div>
+        </section>
+        <aside class="slip panel" aria-label="投注單">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow small">BET SLIP</div>
+              <h2>投注單</h2>
+            </div>
+            <span class="slip-icon">◈</span>
+          </div>
+          <form id="bet-form">
+            <div class="market-tabs" id="market-tabs">
+              <button type="button" data-market="win" aria-pressed="true">
+                獨贏</button
+              ><button type="button" data-market="place" aria-pressed="false">
+                位置</button
+              ><button type="button" data-market="pair" aria-pressed="false">
+                連贏
+              </button>
+            </div>
+            <p id="market-hint" class="hint">選中第一名馬匹</p>
+            <label class="bet-field"
+              >投注馬匹<select id="pick" aria-label="投注馬匹"></select
+            ></label>
+            <label id="second-field" class="bet-field" hidden
+              >配搭馬匹<select id="second" aria-label="配搭馬匹"></select
+            ></label>
+            <div class="stake-row">
+              <label for="stake">投注代幣</label
+              ><span>賠率 <b id="price">—</b></span>
+            </div>
+            <div class="amount">
+              <button type="button" id="less" aria-label="減少十代幣">−</button
+              ><input
+                type="number"
+                id="stake"
+                name="stake"
+                min="10"
+                step="10"
+                inputmode="numeric"
+                value="50"
+                aria-label="投注代幣"
+              /><button type="button" id="more" aria-label="增加十代幣">
+                ＋
+              </button>
+            </div>
+            <div class="chips" id="chips">
+              <button type="button" data-stake="10">10</button
+              ><button type="button" data-stake="50">50</button
+              ><button type="button" data-stake="100">100</button
+              ><button type="button" data-stake="250">250</button>
+            </div>
+            <div class="potential">
+              <span>預計派彩<small>含本金</small></span
+              ><strong id="potential">—</strong>
+            </div>
+            <p id="stake-error" class="stake-error" role="status"></p>
+            <button type="submit" class="primary" id="confirm" disabled>
+              確認投注 <i data-icon="arrow"></i>
+            </button>
+            <button type="button" id="refill" class="refill" hidden>
+              領取 1,000 枚遊戲代幣
+            </button>
+          </form>
+          <div id="closed" class="closed" hidden></div>
+          <div id="message" role="status" aria-live="polite"></div>
+        </aside>
+      </div>
+      <section
+        id="result"
+        class="result-panel"
+        hidden
+        aria-label="賽果與派彩"
+      ></section>
+      <div class="lower-grid">
+        <section class="panel card-table">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow small">RACE CARD</div>
+              <h2 id="field-title">出馬表</h2>
+            </div>
+            <span class="mini-tag" id="field-tag">6 匹出賽</span>
+          </div>
+          <div class="race-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th id="rank-label">馬號</th>
+                  <th>馬匹</th>
+                  <th class="style-col">跑法</th>
+                  <th>獨贏</th>
+                  <th>位置</th>
+                  <th>鏡頭</th>
+                </tr>
+              </thead>
+              <tbody id="field-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel tickets">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow small">MY TICKETS</div>
+              <h2>本場注項</h2>
+            </div>
+            <span class="mini-tag" id="ticket-count">0 張</span>
+          </div>
+          <div id="ticket-list"></div>
+        </section>
+      </div>
+      <footer>
+        <span class="foot-brand">TURFLINE<span>.</span></span
+        ><span>虛擬代幣賽馬街機</span
+        ><a class="foot-version" href="./studio.html#library">模型與授權 ↗</a>
+      </footer>
+    </main>
+    <dialog id="dialog">
+      <div class="dialog-head">
+        <div>
+          <div class="eyebrow small">TURFLINE ARCADE</div>
+          <h2 id="dialog-title"></h2>
+        </div>
+        <button id="close" class="icon-btn" aria-label="關閉">
+          <i data-icon="x"></i>
+        </button>
+      </div>
+      <div id="dialog-body"></div>
+    </dialog>
+    <script type="module" src="./src/arcade.js"></script>
+  </body>
+</html>

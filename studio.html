@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101310" />
+    <title>Turfline ｜ 馬場觀測台</title>
+    <link rel="icon" type="image/svg+xml" href="./turfline.svg" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="top-inner">
+        <a href="#studio" class="brand" aria-label="Turfline 觀賽台"
+          ><img src="./turfline.svg" alt="" /><strong
+            >TURFLINE<span>.</span></strong
+          ></a
+        >
+        <div class="brand-divider"></div>
+        <nav aria-label="主要導覽">
+          <a href="./" class="nav-link">賽事直播</a>
+          <a href="#studio" id="nav-studio" class="nav-link current"
+            ><i data-icon="broadcast"></i>觀賽台</a
+          >
+          <a href="#library" id="nav-library" class="nav-link"
+            ><i data-icon="box"></i>模型庫</a
+          >
+        </nav>
+        <div class="top-end">
+          <span class="status"><b></b> 模型預覽</span
+          ><button
+            class="icon-btn help"
+            id="help"
+            aria-label="操作說明"
+            title="操作說明"
+          >
+            <i data-icon="help"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section id="studio">
+        <div class="intro">
+          <div>
+            <div class="eyebrow">
+              <span class="dash"></span> SPECTATOR STUDIO
+            </div>
+            <h1>馬場觀測台<span class="title-dot">.</span></h1>
+          </div>
+          <div class="meet">
+            <i data-icon="flag"></i>
+            <div>
+              <strong>翠谷馬場</strong><small>GREEN VALLEY RACECOURSE</small>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard">
+          <section class="viewer-box" aria-label="3D 馬場轉播">
+            <div class="stage" id="stage">
+              <canvas
+                id="race-canvas"
+                aria-label="六匹馬與騎師的即時 3D 馬場預覽"
+              ></canvas>
+              <div class="vignette"></div>
+              <div class="feed-meta">
+                <span class="live"
+                  ><b></b> <span id="live-status">LIVE</span></span
+                ><span class="feed-id"
+                  >CAM <span id="cam-number">01</span
+                  ><span class="thin-div">/</span
+                  ><span id="cam-code">TRACKSIDE</span></span
+                >
+              </div>
+              <button
+                class="fullscreen"
+                id="full"
+                aria-label="全螢幕"
+                title="全螢幕"
+              >
+                <i data-icon="expand"></i>
+              </button>
+              <div class="lower-third">
+                <div class="feed-kicker">
+                  <b></b><span id="feed-kicker">TRACKING</span>
+                </div>
+                <div class="horse-title">
+                  <span class="hero-bib" id="hero-bib">01</span>
+                  <h2 id="hero-name">赤焰流星</h2>
+                </div>
+                <div class="horse-en" id="hero-eng">CRIMSON COMET</div>
+              </div>
+              <div class="broadcast-mark">
+                <span class="signal-bars"><b></b><b></b><b></b><b></b></span
+                ><span>TURFLINE TV</span>
+              </div>
+              <div class="loading" id="loading" role="status">
+                <b class="loader"></b><span>正在載入馬場模型</span>
+              </div>
+            </div>
+            <div class="transport">
+              <button
+                id="play"
+                class="control"
+                aria-label="暫停播放"
+                title="暫停 / 播放 (Space)"
+              >
+                <i data-icon="pause"></i>
+              </button>
+              <button
+                id="restart"
+                class="control rewind"
+                aria-label="重播預覽"
+                title="重播預覽"
+              >
+                <i data-icon="restart"></i>
+              </button>
+              <span class="transport-divider"></span
+              ><span class="time" id="time">00:00</span>
+              <input
+                type="range"
+                id="scrub"
+                aria-label="預覽進度"
+                min="0"
+                max="1000"
+                value="0"
+                step="1"
+              />
+              <label class="speed" title="播放速度"
+                ><select id="speed" aria-label="播放速度">
+                  <option value=".5">0.5×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="2">2×</option></select
+                ><i data-icon="chevron"></i
+              ></label>
+            </div>
+          </section>
+          <aside class="field">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow small">RACE FIELD</div>
+                <h2>焦點馬匹</h2>
+              </div>
+              <span class="count"><strong>06</strong> 匹</span>
+            </div>
+            <div class="runners" id="runners"></div>
+            <div class="field-note">
+              <i data-icon="focus"></i>選擇馬匹，即可切換追蹤鏡頭
+            </div>
+          </aside>
+        </div>
+        <div class="section-head">
+          <div class="section-title">
+            <span class="head-bar"></span>
+            <h2>鏡頭機位</h2>
+            <span class="subheading">CAMERA DECK</span>
+          </div>
+          <small class="keys"
+            ><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切換鏡頭</small
+          >
+        </div>
+        <div id="cams" class="camera-grid"></div>
+      </section>
+      <section id="library" hidden>
+        <div class="intro">
+          <div>
+            <div class="eyebrow"><span class="dash"></span> ASSET LIBRARY</div>
+            <h1>模型庫<span class="title-dot">.</span></h1>
+          </div>
+          <span class="library-count">03 <small>組素材</small></span>
+        </div>
+        <div id="asset-cards" class="asset-grid"></div>
+        <div class="section-head">
+          <div class="section-title">
+            <span class="head-bar"></span>
+            <h2>同機位比較</h2>
+            <span class="subheading">MODEL COMPARISON</span>
+          </div>
+        </div>
+        <div id="compare" class="compare-grid"></div>
+        <div class="section-head">
+          <div class="section-title">
+            <span class="head-bar"></span>
+            <h2>場地實景</h2>
+            <span class="subheading">VENUE CAMERAS</span>
+          </div>
+        </div>
+        <div class="venues" id="venues"></div>
+      </section>
+      <footer>
+        <span class="foot-brand">TURFLINE<span>.</span></span
+        ><span>3D 賽馬模型預覽</span
+        ><span class="foot-version">STUDIO BUILD　/　0.1</span>
+      </footer>
+    </main>
+    <dialog id="help-dialog">
+      <div class="dialog-head">
+        <div>
+          <div class="eyebrow small">STUDIO CONTROLS</div>
+          <h2>操作說明</h2>
+        </div>
+        <button id="close-help" class="icon-btn" aria-label="關閉說明">
+          <i data-icon="x"></i>
+        </button>
+      </div>
+      <ul>
+        <li>
+          <b>追蹤馬匹</b
+          ><span>從右邊名單選擇馬匹，所有比賽鏡頭都會跟住佢。</span>
+        </li>
+        <li>
+          <b>切換機位</b
+          ><span>點選鏡頭卡或按 1、2、3，查看場邊、俯視及長焦畫面。</span>
+        </li>
+        <li>
+          <b>重看馬步</b><span>按空白鍵暫停，拖動時間軸或選擇半速播放。</span>
+        </li>
+        <li>
+          <b>檢查場地</b
+          ><span>模型庫提供馬閘、看台及終點的定點鏡頭，同埋各模型來源。</span>
+        </li>
+      </ul>
+    </dialog>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

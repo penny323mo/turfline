@@ -1,0 +1,211 @@
+export const LENGTH = 1200;
+export const GATES = 3;
+export const STARTING_FUNDS = 1000;
+export const markets = { win: "獨贏", place: "位置", pair: "連贏" };
+export const styles = ["領放", "跟前", "後上", "前置", "留後", "跟前"];
+const names = [
+  "翠谷短途盃",
+  "晨曦草地錦標",
+  "金葉短途挑戰盃",
+  "銀灣紀念盃",
+  "綠茵冠軍盃",
+  "日落競速盃",
+];
+const strengths = [1.45, 1.19, 1.05, 0.92, 0.8, 0.7];
+
+function uniform() {
+  return (crypto.getRandomValues(new Uint32Array(1))[0] + 0.5) / 4294967296;
+}
+function raceCard(number, rng) {
+  const weights = strengths.map((base) => base * (0.7 + 0.65 * rng()));
+  const total = weights.reduce((a, b) => a + b, 0);
+  return {
+    number,
+    name: names[(number - 1) % names.length],
+    probabilities: weights.map((w) => w / total),
+    phase: "open",
+    tickets: [],
+    plan: null,
+    anchor: 0,
+    elapsed: 0,
+    speed: 1,
+    settlement: null,
+  };
+}
+export function newGame(rng = uniform) {
+  return {
+    version: 1,
+    balance: STARTING_FUNDS,
+    race: raceCard(1, rng),
+    history: [],
+  };
+}
+export function odds(race, market, picks) {
+  if (
+    !Object.hasOwn(markets, market) ||
+    picks.length !== (market === "pair" ? 2 : 1) ||
+    new Set(picks).size !== picks.length ||
+    picks.some((n) => !Number.isInteger(n) || n < 0 || n >= 6)
+  )
+    throw Error("請選擇有效嘅出賽馬匹。");
+  const p = race.probabilities;
+  const a = picks[0],
+    b = picks[1];
+  let probability = p[a];
+  if (market === "place")
+    probability += p.reduce(
+      (sum, other, i) => sum + (i === a ? 0 : (other * p[a]) / (1 - other)),
+      0,
+    );
+  if (market === "pair")
+    probability = p[a] * p[b] * (1 / (1 - p[a]) + 1 / (1 - p[b]));
+  return Math.max(1.1, Math.floor(9.2 / probability) / 10);
+}
+export const returns = (stake, price) =>
+  Math.floor((stake * Math.round(price * 10)) / 10);
+function requireOpen(race) {
+  if (race.phase !== "open") throw Error("今場已經封盤。");
+}
+export function wager(game, { market, picks, stake, id }) {
+  const race = game.race;
+  if (race.tickets.some((t) => t.id === id)) return;
+  requireOpen(race);
+  const price = odds(race, market, picks);
+  if (!Number.isSafeInteger(stake) || stake < 10 || stake % 10)
+    throw Error("注碼須為 10 的正整數倍。");
+  if (stake > game.balance) throw Error("代幣餘額不足。");
+  if (race.tickets.length >= 100) throw Error("每場最多 100 張注單。");
+  race.tickets.push({ id, market, picks: [...picks], stake, price });
+  game.balance -= stake;
+}
+export function cancel(game, id) {
+  requireOpen(game.race);
+  const index = game.race.tickets.findIndex((t) => t.id === id);
+  if (index < 0) return;
+  game.balance += game.race.tickets.splice(index, 1)[0].stake;
+}
+function drawPlan(race, rng) {
+  // Sequential weighted sampling gives the same order probabilities used in the odds board.
+  const remaining = race.probabilities.map((p, i) => ({ p, i }));
+  let finish = 67 + rng() * 3;
+  const plan = new Array(6);
+  while (remaining.length) {
+    let mark = rng() * remaining.reduce((acc, h) => acc + h.p, 0);
+    let index = remaining.findIndex((h) => (mark -= h.p) < 0);
+    if (index === -1) index = remaining.length - 1;
+    const { i } = remaining.splice(index, 1)[0];
+    plan[i] = {
+      finish,
+      early:
+        [0.044, 0.016, -0.042, 0.028, -0.052, 0.006][i] + (rng() - 0.5) * 0.026,
+      surge: (rng() - 0.5) * 0.045,
+    };
+    finish += 0.09 + rng() * 0.43;
+  }
+  return plan;
+}
+export function start(game, now = Date.now(), rng = uniform) {
+  requireOpen(game.race);
+  const race = game.race;
+  race.plan = drawPlan(race, rng);
+  race.phase = "running";
+  race.anchor = now + GATES * 1000;
+  race.elapsed = 0;
+}
+export function elapsed(race, now = Date.now()) {
+  if (race.phase === "settled")
+    return Math.max(...race.plan.map((h) => h.finish)) + 0.8;
+  if (race.phase !== "running") return 0;
+  const delta = (now - race.anchor) / 1000;
+  return race.elapsed + delta * (delta < 0 ? 1 : race.speed);
+}
+export function changeSpeed(game, speed, now = Date.now()) {
+  if (![1, 2].includes(speed) || game.race.phase !== "running") return;
+  const r = game.race;
+  const t = elapsed(r, now);
+  if (t >= 0) {
+    r.elapsed = t;
+    r.anchor = now;
+  }
+  r.speed = speed;
+}
+// Endpoints at t=0 and t=finish are exact. The pace adjustments disappear at the line.
+export function distance(h, t) {
+  if (t <= 0) return 0;
+  if (t >= h.finish) return LENGTH + Math.min(22, 17 * (t - h.finish));
+  const u = t / h.finish;
+  const acceleration = 0.023 * (1 - Math.exp(-u / 0.023));
+  const start = (u - acceleration) / (1 - 0.023 * (1 - Math.exp(-1 / 0.023)));
+  const wave = Math.sin(Math.PI * u);
+  return (
+    LENGTH *
+    (start +
+      wave * wave * (h.early * (1 - u) + h.surge * Math.sin(2 * Math.PI * u)))
+  );
+}
+export function snapshot(race, now = Date.now()) {
+  const t = elapsed(race, now),
+    ds = race.plan.map((h) => distance(h, t));
+  const order = ds
+    .map((_, i) => i)
+    .sort(
+      (a, b) =>
+        ds[b] - ds[a] ||
+        (t > 0 ? race.plan[a].finish - race.plan[b].finish : a - b),
+    );
+  return {
+    t,
+    ds,
+    order,
+    remaining: Math.max(0, Math.ceil(LENGTH - Math.max(...ds))),
+  };
+}
+export function settle(game, now = Date.now()) {
+  const r = game.race;
+  if (
+    r.phase !== "running" ||
+    elapsed(r, now) < Math.max(...r.plan.map((h) => h.finish))
+  )
+    return false;
+  const order = r.plan
+    .map((_, i) => i)
+    .sort((a, b) => r.plan[a].finish - r.plan[b].finish);
+  const totals = { stake: 0, paid: 0 };
+  for (const ticket of r.tickets) {
+    const firstTwo = order.slice(0, 2);
+    const won =
+      ticket.market === "win"
+        ? ticket.picks[0] === order[0]
+        : ticket.picks.every((i) => firstTwo.includes(i));
+    ticket.paid = won ? returns(ticket.stake, ticket.price) : 0;
+    totals.stake += ticket.stake;
+    totals.paid += ticket.paid;
+  }
+  r.settlement = { order, ...totals };
+  r.phase = "settled";
+  game.balance += totals.paid;
+  game.history.unshift({
+    number: r.number,
+    name: r.name,
+    order,
+    stake: totals.stake,
+    paid: totals.paid,
+    times: r.plan.map((h) => h.finish),
+    tickets: structuredClone(r.tickets),
+  });
+  game.history = game.history.slice(0, 20);
+  return true;
+}
+export function next(game, rng = uniform) {
+  if (game.race.phase !== "settled") throw Error("請等待今場賽事完成。");
+  game.race = raceCard(game.race.number + 1, rng);
+}
+export function refill(game) {
+  if (
+    game.balance >= 10 ||
+    game.race.phase !== "open" ||
+    game.race.tickets.length
+  )
+    throw Error("現時仍可使用已有代幣或注單。");
+  game.balance += STARTING_FUNDS;
+}
