@@ -17,7 +17,18 @@ export async function startStage(canvas, state, refresh) {
     alpha: false,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
+  // Software WebGL shares CPU time with input, storage and the other race tabs.
+  const gl = renderer.getContext();
+  const driver = gl.getExtension("WEBGL_debug_renderer_info");
+  const software = Boolean(
+    driver &&
+      /swiftshader|llvmpipe|software rasterizer/i.test(
+        gl.getParameter(driver.UNMASKED_RENDERER_WEBGL),
+      ),
+  );
+  renderer.setPixelRatio(
+    software ? 0.8 : Math.min(window.devicePixelRatio || 1, 1.65),
+  );
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -32,7 +43,11 @@ export async function startStage(canvas, state, refresh) {
   const hemi = new THREE.HemisphereLight(0xe8f3ff, 0xcdbe95, 1.35);
   const sun = new THREE.DirectionalLight(0xfff0d6, 2.48);
   sun.castShadow = true;
-  const shadowSize = Math.min(innerWidth, innerHeight) < 650 ? 1024 : 2048;
+  const shadowSize = software
+    ? 512
+    : Math.min(innerWidth, innerHeight) < 650
+      ? 1024
+      : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   Object.assign(sun.shadow.camera, {
     left: -17,
@@ -51,7 +66,7 @@ export async function startStage(canvas, state, refresh) {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.mapping = THREE.EquirectangularReflectionMapping;
       scene.background = texture;
-      scene.environment = texture;
+      if (!software) scene.environment = texture;
       scene.environmentIntensity = 0.33;
       scene.backgroundIntensity = 1.04;
       scene.backgroundRotation.y = 1.2;
@@ -70,6 +85,10 @@ export async function startStage(canvas, state, refresh) {
     lastUi = -1,
     lastTime = state.time;
   const canvasBox = canvas.parentElement;
+  let onScreen = true;
+  new IntersectionObserver(([entry]) => {
+    onScreen = entry.isIntersecting;
+  }).observe(canvasBox);
   const size = () => {
     const w = canvasBox.clientWidth,
       h = canvasBox.clientHeight;
@@ -161,9 +180,14 @@ export async function startStage(canvas, state, refresh) {
     cut = false;
   }
   function render(now) {
-    const dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 0;
+    if (!state.visible || document.hidden || !onScreen) {
+      lastFrame = 0;
+      return;
+    }
+    const fps = !document.hasFocus() ? 8 : software ? 18 : 45;
+    if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
+    const dt = lastFrame ? Math.min(0.24, (now - lastFrame) / 1000) : 0;
     lastFrame = now;
-    if (!state.visible || document.hidden) return;
     const step = state.paused || venueShots[state.cam] ? 0 : dt * state.speed;
     state.time = (state.time + step) % duration;
     if (Math.abs(state.time - lastTime) > 0.6) cut = true;

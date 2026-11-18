@@ -43,7 +43,9 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           curl --retry 10 --retry-connrefused --retry-delay 1 --fail --silent http://127.0.0.1:4174/turfline/ -o /dev/null
-          TURFLINE_URL=http://127.0.0.1:4174/turfline/ npm run smoke
+          export TURFLINE_URL=http://127.0.0.1:4174/turfline/
+          TURFLINE_DUAL_3D=1 npm run smoke
+          npm run smoke
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:

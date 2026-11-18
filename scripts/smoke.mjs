@@ -42,15 +42,15 @@ const waitText = (p, selector, value, timeout = 15000) =>
     [selector, value],
     { timeout },
   );
-async function ready(p) {
+async function ready(p, mode = "3d") {
   await p.waitForSelector("#stage[data-render]", {
     state: "attached",
     timeout: 60000,
   });
   assert.equal(
     await p.locator("#stage").getAttribute("data-render"),
-    "3d",
-    "Expected a live WebGL race feed",
+    mode,
+    "Expected the selected race renderer",
   );
 }
 const tickets = [];
@@ -81,8 +81,18 @@ try {
   await waitText(page, "#balance", "1,000");
   const peer = await context.newPage();
   observe(peer);
+  // Exercise the same wallet across WebGL and the supported live-radar fallback.
+  const dual = process.env.TURFLINE_DUAL_3D === "1";
+  if (!dual)
+    await peer.addInitScript(() => {
+      const get = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        return type === "webgl2" ? null : get.call(this, type, ...args);
+      };
+    });
   await peer.goto(base);
-  await ready(peer);
+  await ready(peer, dual ? "3d" : "2d");
+  console.log("Both race tabs loaded; second renderer:", dual ? "3d" : "2d");
   await Promise.all([ticket(page, "win", 0), ticket(peer, "win", 1)]);
   await waitText(page, "#balance", "980");
   await waitText(peer, "#ticket-count", "2 張");
