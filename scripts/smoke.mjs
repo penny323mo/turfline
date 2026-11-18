@@ -40,13 +40,11 @@ const waitText = (p, selector, value, timeout = 15000) =>
   p.waitForFunction(
     ([id, text]) => document.querySelector(id)?.textContent === text,
     [selector, value],
-    { timeout },
+    { timeout, polling: 100 },
   );
 async function ready(p, mode = "3d") {
-  await p.waitForSelector("#stage[data-render]", {
-    state: "attached",
-    timeout: 60000,
-  });
+  await p.waitForFunction(() => document.querySelector("#stage")?.dataset.render,
+    undefined, { timeout: 60000, polling: 100 });
   assert.equal(
     await p.locator("#stage").getAttribute("data-render"),
     mode,
@@ -54,7 +52,7 @@ async function ready(p, mode = "3d") {
   );
 }
 const tickets = [];
-async function ticket(p, market, first, second) {
+async function prepare(p, market, first, second) {
   await p.locator('[data-market="' + market + '"]').click();
   await p.locator("#pick").selectOption(String(first));
   if (second !== undefined)
@@ -64,13 +62,21 @@ async function ticket(p, market, first, second) {
     (await p.locator("#price").innerText()).replace("×", ""),
   );
   const picks = second === undefined ? [first] : [first, second];
-  await p.locator("#confirm").click();
   tickets.push({ market, picks, price });
+}
+async function ticket(p, market, first, second) {
+  await prepare(p, market, first, second);
+  await p.locator("#confirm").click();
 }
 try {
   if (!realtime) await context.clock.setFixedTime(now);
   await page.goto(base);
   await ready(page);
+  console.log("Primary 3D renderer:", await page.evaluate(() => {
+    const gl = document.querySelector("#race-canvas").getContext("webgl2");
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  }));
   await waitText(page, "#balance", "1,000");
   await page.locator("#stake").fill("1010");
   assert(await page.locator("#confirm").isDisabled());
@@ -93,7 +99,9 @@ try {
   await peer.goto(base);
   await ready(peer, dual ? "3d" : "2d");
   console.log("Both race tabs loaded; second renderer:", dual ? "3d" : "2d");
-  await Promise.all([ticket(page, "win", 0), ticket(peer, "win", 1)]);
+  await prepare(page, "win", 0);
+  await prepare(peer, "win", 1);
+  await Promise.all([page.locator("#confirm").click(), peer.locator("#confirm").click()]);
   await waitText(page, "#balance", "980");
   await waitText(peer, "#ticket-count", "2 張");
   for (let i = 2; i < 6; i++) {
@@ -104,6 +112,7 @@ try {
   await waitText(page, "#ticket-count", "7 張");
   await ticket(page, "pair", 0, 1);
   await waitText(page, "#balance", "920");
+  console.log("Eight tickets posted across both tabs.");
   await page.locator("#start").click();
   await waitText(peer, "#phase", "賽事進行中");
   assert(await peer.locator("#bet-form").isHidden());
@@ -146,6 +155,7 @@ try {
   if (!realtime) await context.clock.setFixedTime(now + 100000);
   await waitText(page, "#phase", "賽事完成", 80000);
   await waitText(peer, "#phase", "賽事完成", 80000);
+  console.log("Finish received in both tabs.");
   const order = await page
     .locator("#field-body tr")
     .evaluateAll((rows) => rows.map((tr) => Number(tr.dataset.i)));
@@ -202,6 +212,16 @@ try {
     }),
   );
 } catch (error) {
+  for (const p of context.pages()) {
+    const state = await p.evaluate(() => ({
+      title: document.title, visibility: document.visibilityState,
+      renderer: document.querySelector("#stage")?.dataset.render,
+      phase: document.querySelector("#phase")?.textContent,
+      tickets: document.querySelector("#ticket-count")?.textContent,
+      balance: document.querySelector("#balance")?.textContent,
+    })).catch(() => ({}));
+    console.error("Last visible race state:", state);
+  }
   const screenshot = path.join(os.tmpdir(), "turfline-smoke-failure.png");
   await page.screenshot({ path: screenshot, timeout: 5000 }).catch(() => {});
   console.error(

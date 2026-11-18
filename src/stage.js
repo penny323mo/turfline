@@ -26,10 +26,8 @@ export async function startStage(canvas, state, refresh) {
         gl.getParameter(driver.UNMASKED_RENDERER_WEBGL),
       ),
   );
-  renderer.setPixelRatio(
-    software ? 0.8 : Math.min(window.devicePixelRatio || 1, 1.65),
-  );
-  renderer.shadowMap.enabled = true;
+  renderer.setPixelRatio(software ? 0.7 : Math.min(devicePixelRatio || 1, 1.65));
+  renderer.shadowMap.enabled = !software;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.03;
@@ -43,9 +41,7 @@ export async function startStage(canvas, state, refresh) {
   const hemi = new THREE.HemisphereLight(0xe8f3ff, 0xcdbe95, 1.35);
   const sun = new THREE.DirectionalLight(0xfff0d6, 2.48);
   sun.castShadow = true;
-  const shadowSize = software
-    ? 512
-    : Math.min(innerWidth, innerHeight) < 650
+  const shadowSize = Math.min(innerWidth, innerHeight) < 650
       ? 1024
       : 2048;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -76,6 +72,28 @@ export async function startStage(canvas, state, refresh) {
   let actors = horses.map(makeAyanHorse);
   const loadedActors = new Map([[makeAyanHorse, actors]]);
   for (const actor of actors) scene.add(actor.group);
+  // Projected contact patches keep the horses grounded without a second
+  // scene-wide geometry pass on software WebGL.
+  const patches = [];
+  if (software) {
+    const stamp = document.createElement("canvas");
+    stamp.width = stamp.height = 64;
+    const ctx = stamp.getContext("2d");
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(35,32,23,.45)");
+    gradient.addColorStop(1, "rgba(35,32,23,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    const material = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(stamp), transparent: true, depthWrite: false,
+    });
+    const plane = new THREE.PlaneGeometry(1.7, 3.2).rotateX(-Math.PI / 2);
+    for (let i = 0; i < actors.length; i++) {
+      const patch = new THREE.Mesh(plane, material);
+      patches.push(patch);
+      scene.add(patch);
+    }
+  }
   const eye = new THREE.Vector3(),
     look = new THREE.Vector3(),
     aim = new THREE.Vector3(),
@@ -96,6 +114,7 @@ export async function startStage(canvas, state, refresh) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    cut = true;
   };
   new ResizeObserver(size).observe(canvasBox);
   size();
@@ -115,6 +134,7 @@ export async function startStage(canvas, state, refresh) {
           ? race.ds[i] - 1.25
           : z + spec.z + 1.65 * Math.sin(t * 0.32 + i * 0.88),
       );
+      if (software) patches[i].position.set(g.position.x, 0.012, g.position.z);
       g.rotation.y = 0.008 * Math.cos(t * 0.38 + i);
       if (race && (cut || race.t <= 0 || race.stopped))
         actors[i].seek(Math.max(0, race.t) + i * 0.147, race.t > 0, 16);
@@ -179,13 +199,28 @@ export async function startStage(canvas, state, refresh) {
     }
     cut = false;
   }
+  let pendingFrame;
+  function draw() {
+    renderer.render(scene, camera);
+    if (software) {
+      pendingFrame = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+    }
+  }
   function render(now) {
     if (!state.visible || document.hidden || !onScreen) {
       lastFrame = 0;
       return;
     }
-    const fps = !document.hasFocus() ? 8 : software ? 18 : 45;
+    if (!cut && (state.paused || venueShots[state.cam] || (software && state.holdFrame))) return;
+    const fps = !document.hasFocus() ? 6 : software ? 18 : 45;
     if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
+    // Do not enqueue another complete frame while the previous one is pending.
+    if (pendingFrame) {
+      if (gl.clientWaitSync(pendingFrame, 0, 0) === gl.TIMEOUT_EXPIRED) return;
+      gl.deleteSync(pendingFrame);
+      pendingFrame = null;
+    }
     const dt = lastFrame ? Math.min(0.24, (now - lastFrame) / 1000) : 0;
     lastFrame = now;
     const step = state.paused || venueShots[state.cam] ? 0 : dt * state.speed;
@@ -197,16 +232,14 @@ export async function startStage(canvas, state, refresh) {
       refresh();
       lastUi = Math.floor(state.time * 10);
     }
-    renderer.render(scene, camera);
+    draw();
   }
   place(0);
-  renderer.render(scene, camera);
+  draw();
   renderer.setAnimationLoop(render);
   return {
     cut: () => {
       cut = true;
-      place(0);
-      renderer.render(scene, camera);
     },
     async replace(factory) {
       let next = loadedActors.get(factory);
@@ -218,8 +251,6 @@ export async function startStage(canvas, state, refresh) {
       actors = next;
       for (const actor of actors) scene.add(actor.group);
       cut = true;
-      place(0);
-      renderer.render(scene, camera);
     },
   };
 }

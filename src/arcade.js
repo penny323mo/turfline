@@ -62,6 +62,9 @@ const cameraState = {
   paused: false,
   visible: true,
   speed: 1,
+  get holdFrame() {
+    return game.race.phase !== "running";
+  },
   courseFrame() {
     if (game.race.phase === "open") return null;
     return { ...snapshot(game.race), stopped: game.race.phase === "settled" };
@@ -108,6 +111,7 @@ quickFocus.setAttribute("aria-label", "直播焦點馬匹");
 quickFocus.innerHTML = options;
 $("sound").before(quickFocus);
 function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
+  const changed = horse !== cameraState.selected || cam !== cameraState.cam;
   cameraState.selected = horse;
   cameraState.cam = cam;
   const h = horses[horse],
@@ -128,7 +132,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
     row.classList.toggle("tracked", active);
     row.querySelector(".follow").setAttribute("aria-pressed", String(active));
   }
-  stage?.cut();
+  if (changed) stage?.cut();
   if (radar) drawRadar();
 }
 function field() {

@@ -52,10 +52,12 @@ function batch() {
   return { tri, shape, box, mesh };
 }
 
-let grassTexture;
+let grassTexture, grassReady;
 function groundTexture() {
   if (grassTexture) return grassTexture;
-  grassTexture = new THREE.TextureLoader().load(new URL('environment/turf.jpg', document.baseURI).href);
+  grassReady = new Promise((resolve, reject) => {
+    grassTexture = new THREE.TextureLoader().load(new URL('environment/turf.jpg', document.baseURI).href, resolve, undefined, reject);
+  });
   grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
   grassTexture.repeat.set(1.8, 1.8);
   grassTexture.anisotropy = 8;
@@ -362,5 +364,5 @@ export function createLandscape() {
     secondGrass.position.z = 64 + 128 * Math.round((playerZ - 64) / 128);
   }
   update();
-  return { group, update, ready: Promise.all([addOaks(chunks), addVenue(group)]) };
+  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group)]) };
 }
