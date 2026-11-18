@@ -24,7 +24,16 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run build
-      - run: npx --no-install playwright-core install --with-deps chromium
+      - name: Select browser for the WebGL smoke test
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null; then
+            browser_path="$(command -v google-chrome)"
+            echo "TURFLINE_CHROME=$browser_path" >> "$GITHUB_ENV"
+            "$browser_path" --version
+          else
+            npx --no-install playwright-core install --with-deps chromium
+          fi
       - name: Exercise the production build under a Pages project path
         shell: bash
         run: |

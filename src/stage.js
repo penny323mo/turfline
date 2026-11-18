@@ -19,7 +19,7 @@ export async function startStage(canvas, state, refresh) {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.03;
   const scene = new THREE.Scene();
@@ -32,7 +32,8 @@ export async function startStage(canvas, state, refresh) {
   const hemi = new THREE.HemisphereLight(0xe8f3ff, 0xcdbe95, 1.35);
   const sun = new THREE.DirectionalLight(0xfff0d6, 2.48);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  const shadowSize = Math.min(innerWidth, innerHeight) < 650 ? 1024 : 2048;
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   Object.assign(sun.shadow.camera, {
     left: -17,
     right: 17,

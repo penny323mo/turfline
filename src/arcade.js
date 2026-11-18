@@ -662,6 +662,23 @@ async function init() {
     const { startStage } = await import("./stage.js");
     stage = await startStage($("race-canvas"), cameraState, () => {});
     $("stage").dataset.render = "3d";
+    const canvas = $("race-canvas");
+    canvas.addEventListener("webglcontextlost", () => {
+      const note = $("loading");
+      note.replaceChildren(
+        document.createTextNode("3D 畫面中斷，注單已保留。"),
+      );
+      const retry = document.createElement("button");
+      retry.className = "retry";
+      retry.textContent = "重新載入";
+      retry.onclick = () => location.reload();
+      note.append(retry);
+      note.hidden = false;
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      $("loading").hidden = true;
+      stage.cut();
+    });
   } catch (err) {
     console.warn("3D rendering unavailable", err);
     radar = document.createElement("canvas");

@@ -26,6 +26,9 @@ const origin = new URL(base).origin;
 const now = Date.now();
 function observe(page) {
   page.on("pageerror", (e) => faults.push(e.message));
+  page.on("console", (m) => {
+    if (m.text().includes("3D rendering unavailable")) console.error(m.text());
+  });
   page.on("response", (r) => {
     if (new URL(r.url()).origin === origin && r.status() >= 400)
       faults.push(r.status() + " " + r.url());
@@ -39,8 +42,17 @@ const waitText = (p, selector, value, timeout = 15000) =>
     [selector, value],
     { timeout },
   );
-const ready = (p) =>
-  p.waitForSelector('#stage[data-render="3d"]', { timeout: 60000 });
+async function ready(p) {
+  await p.waitForSelector("#stage[data-render]", {
+    state: "attached",
+    timeout: 60000,
+  });
+  assert.equal(
+    await p.locator("#stage").getAttribute("data-render"),
+    "3d",
+    "Expected a live WebGL race feed",
+  );
+}
 const tickets = [];
 async function ticket(p, market, first, second) {
   await p.locator('[data-market="' + market + '"]').click();
@@ -56,7 +68,7 @@ async function ticket(p, market, first, second) {
   tickets.push({ market, picks, price });
 }
 try {
-  if (!realtime) await page.clock.setFixedTime(now);
+  if (!realtime) await context.clock.setFixedTime(now);
   await page.goto(base);
   await ready(page);
   await waitText(page, "#balance", "1,000");
@@ -69,7 +81,6 @@ try {
   await waitText(page, "#balance", "1,000");
   const peer = await context.newPage();
   observe(peer);
-  if (!realtime) await peer.clock.setFixedTime(now);
   await peer.goto(base);
   await ready(peer);
   await Promise.all([ticket(page, "win", 0), ticket(peer, "win", 1)]);
@@ -93,7 +104,7 @@ try {
   await ready(page);
   await waitText(page, "#balance", "920");
   await waitText(page, "#ticket-count", "8 張");
-  if (!realtime) await page.clock.setFixedTime(now + 18000);
+  if (!realtime) await context.clock.setFixedTime(now + 18000);
   for (const [cam, num] of [
     ["aerial", 3],
     ["tele", 6],
@@ -122,11 +133,7 @@ try {
   );
   await page.locator("#full").click();
   assert.equal(await page.locator("#field-body tr").count(), 6);
-  if (!realtime)
-    await Promise.all([
-      page.clock.setFixedTime(now + 100000),
-      peer.clock.setFixedTime(now + 100000),
-    ]);
+  if (!realtime) await context.clock.setFixedTime(now + 100000);
   await waitText(page, "#phase", "賽事完成", 80000);
   await waitText(peer, "#phase", "賽事完成", 80000);
   const order = await page
