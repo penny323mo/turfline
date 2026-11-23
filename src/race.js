@@ -97,8 +97,8 @@ function drawPlan(race, rng) {
     plan[i] = {
       finish,
       early:
-        [0.044, 0.016, -0.042, 0.028, -0.052, 0.006][i] + (rng() - 0.5) * 0.026,
-      surge: (rng() - 0.5) * 0.045,
+        [0.016, 0.006, -0.012, 0.010, -0.016, 0.002][i] + (rng() - 0.5) * 0.012,
+      surge: (rng() - 0.5) * 0.021,
     };
     finish += 0.09 + rng() * 0.43;
   }
@@ -144,8 +144,10 @@ export function distance(h, t) {
   );
 }
 export function snapshot(race, now = Date.now()) {
-  const t = elapsed(race, now),
-    ds = race.plan.map((h) => distance(h, t));
+  return snapshotAt(race, elapsed(race, now));
+}
+export function snapshotAt(race, t) {
+  const ds = race.plan.map((h) => distance(h, t));
   const order = ds
     .map((_, i) => i)
     .sort(

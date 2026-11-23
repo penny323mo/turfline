@@ -16,6 +16,9 @@ const soleVertices = [
   11901, 13645, 2355, 8804, 3273, 9973, 9938, 3281, 9967, 202, 4573,
   4584, 210, 4974, 2607, 1143, 12585, 6138, 1135, 6174, 4524,
 ];
+// Outermost points of the muzzle across 720 poses, including the loop blend
+// and both yaw limits. Race distance is measured at the nose.
+const muzzleVertices = [3998, 1879, 11244, 7524, 7733, 11446];
 
 function closeStride(clip) {
   // The export ends mid-stride. Bridge its final pose to the initial one
@@ -104,6 +107,7 @@ export function makeAyanHorse(spec) {
   horse.getObjectByName('spine008_50').attach(tack);
   const playbackRate = speed => THREE.MathUtils.clamp(0.9 + speed * 0.025, 0.95, 1.72);
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
+  let noseLead = 0;
   function placeRider(running) {
     // SkinnedMesh refreshes its bind inverse in updateMatrixWorld. Start each
     // solve from the same mount origin so scrubbing also works between renders.
@@ -117,6 +121,12 @@ export function makeAyanHorse(spec) {
       lowest = Math.min(lowest, contact.y);
     }
     mount.position.y = Math.max(0, -lowest);
+    const yawCos = Math.cos(group.rotation.y), yawSin = Math.sin(group.rotation.y);
+    noseLead = -Infinity;
+    for (const vertex of muzzleVertices) {
+      body.getVertexPosition(vertex, contact).applyMatrix4(bodyToMount);
+      noseLead = Math.max(noseLead, contact.z * yawCos - contact.x * yawSin);
+    }
     const phase = stride.time / asset.stride.duration * Math.PI * 2;
     waist.rotation.x = running ? 0.34 + Math.sin(phase) * 0.055 : 0;
   }
@@ -136,5 +146,5 @@ export function makeAyanHorse(spec) {
     placeRider(true);
   }
   seek(0);
-  return { group, update, seek };
+  return { group, update, seek, get noseLead() { return noseLead; } };
 }

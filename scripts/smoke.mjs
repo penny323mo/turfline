@@ -172,13 +172,42 @@ try {
   await page.reload();
   await ready(page);
   await waitText(page, "#balance", expected);
+  await page.locator("#watch-replay").click();
+  await waitText(page, "#live-status", "REPLAY");
+  await waitText(peer, "#live-status", "RESULT");
+  await page.locator("#replay-rate").selectOption("0.25");
+  await page.locator("#replay-line").click();
+  await waitText(page, "#replay-play", "播放");
+  await waitText(page, "#hero-bib", String(order[0] + 1).padStart(2, "0"));
+  await waitText(page, "#cam-label", "CAM 04　/　FINISH LINE");
+  assert.equal(await page.locator("#replay-time").innerText(),
+    await page.locator('[data-gap="' + order[0] + '"]').innerText());
+  await page.locator("#replay-scrub").focus();
+  await page.keyboard.press("Home");
+  await page.locator("#replay-play").click();
+  await waitText(page, "#replay-play", "暫停");
+  await page.locator("#full").click();
+  assert(await page.locator("#stage #replay-exit").isVisible());
+  await page.locator("#replay-exit").click();
+  await waitText(page, "#live-status", "RESULT");
+  await page.locator("#full").click();
+  await waitText(page, "#balance", expected);
   await page.locator("#history-button").click();
   assert.equal(await page.locator(".history-row").count(), 1);
   await page.locator("#close").click();
+  await peer.locator("#watch-replay").click();
+  await peer.locator("#replay-line").click();
+  await waitText(peer, "#replay-play", "播放");
   await page.locator("#next").click();
   await waitText(page, "#meet-number", "R02");
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
+  assert(await peer.locator("#replay-deck").isHidden());
+  await page.locator('[data-price="place"][data-runner="4"]').click();
+  assert.equal(await page.locator("#pick").inputValue(), "4");
+  assert.equal(await page.locator('[data-market="place"]').getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#form-guide .form-rank").innerText(), String(order.indexOf(4) + 1));
+  await waitText(page, "#ticket-count", "0 張");
   await page.setViewportSize({ width: 390, height: 844 });
   assert(
     await page.evaluate(
@@ -188,6 +217,7 @@ try {
   await page.locator('[data-market="pair"]').click();
   await page.locator("#pick").selectOption("4");
   assert.notEqual(await page.locator("#second").inputValue(), "4");
+  assert.equal(await page.locator("#form-guide .form-rank").count(), 2);
   await page.locator("#rules-button").click();
   assert(await page.locator("#dialog").isVisible());
   await page.locator("#close").click();
@@ -202,7 +232,7 @@ try {
   assert.equal(await page.locator("#hero-bib").innerText(), "01");
   assert.deepEqual(faults, []);
   console.log(
-    "PASS: 3D, concurrent betting, cancellation, 3 markets, closing, reload, 3 cameras, fullscreen, single settlement, balance, history, next race, mobile and model studio.",
+    "PASS: 3D, concurrent bets, official settlement, independent finish replay, freeze at winning time, fullscreen playback, race-card odds, form, cross-tab next race, mobile and model studio.",
     JSON.stringify({
       order: order.map((i) => i + 1),
       stake: 80,

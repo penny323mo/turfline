@@ -14,8 +14,10 @@ import {
   distance,
   elapsed,
   snapshot,
+  snapshotAt,
   LENGTH,
 } from "../src/race.js";
+import { finishReplay } from "../src/replay.js";
 
 function seeded(seed = 712193) {
   return () =>
@@ -139,4 +141,47 @@ test("arcade credit top-up requires an empty, unfunded open slip; history is bou
   }
   assert.equal(g.history.length, 20);
   assert.equal(g.history[0].number, 24);
+});
+
+test("the new field stays in reach at halfway and different runners can take the lead late", () => {
+  const rng = seeded(1519), spans = [];
+  let leadChanges = 0;
+  for (let i = 0; i < 1000; i++) {
+    const g = newGame(rng);
+    start(g, 0, rng);
+    const halfway = snapshotAt(g.race, 34);
+    spans.push(Math.max(...halfway.ds) - Math.min(...halfway.ds));
+    if (halfway.order[0] !== snapshotAt(g.race, 75).order[0]) leadChanges++;
+  }
+  spans.sort((a, b) => a - b);
+  assert.ok(spans[500] < 35 && spans[950] < 50);
+  assert.ok(leadChanges > 350);
+});
+
+test("replay pauses on the official winning instant, seeks, and never alters the settled save", () => {
+  const g = newGame(seeded());
+  start(g, 100, seeded(7));
+  settle(g, 100000);
+  const original = structuredClone(g), winner = g.race.settlement.order[0];
+  let clock = 300;
+  const replay = finishReplay(g.race, () => clock);
+  clock += 2;
+  assert.equal(replay.position(), replay.from + 1);
+  replay.setRate(0.25);
+  clock += 4;
+  assert.equal(replay.position(), replay.from + 2);
+  replay.pauseAt(replay.winnerTime);
+  clock += 5;
+  assert.equal(replay.position(), g.race.plan[winner].finish);
+  const frame = snapshotAt(g.race, replay.position());
+  assert.equal(frame.ds[winner], LENGTH);
+  assert.equal(frame.ds.filter((d) => d >= LENGTH).length, 1);
+  assert.equal(replay.playing, false);
+  replay.toggle();
+  clock += 30;
+  assert.equal(replay.position(), replay.to);
+  assert.equal(replay.playing, false);
+  replay.toggle();
+  assert.equal(replay.position(), replay.from);
+  assert.deepEqual(g, original);
 });

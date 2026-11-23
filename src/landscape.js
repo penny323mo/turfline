@@ -317,6 +317,34 @@ async function addVenue(group) {
   place('starters-rostrum', -12.5, -5.4, Math.PI / 2);
   place('winning-post', -10.4, 1200, -Math.PI / 2);
   place('finish-mirror', 10.4, 1200, -Math.PI / 2);
+  const finish = new THREE.Mesh(new THREE.PlaneGeometry(21, 0.14).rotateX(-Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: '#f7f4d9' }));
+  finish.position.set(0, 0.009, 1200);
+  group.add(finish);
+  for (const remaining of [800, 400, 200, 100]) {
+    const face = document.createElement('canvas');
+    face.width = 256;
+    face.height = 128;
+    const ctx = face.getContext('2d');
+    ctx.fillStyle = '#f8f6e6';
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.fillStyle = '#184d3f';
+    ctx.fillRect(6, 6, 244, 116);
+    ctx.fillStyle = '#fff8db';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 80px sans-serif';
+    ctx.fillText(String(remaining), 128, 94);
+    const map = new THREE.CanvasTexture(face);
+    map.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1),
+      new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide }));
+    sign.rotation.y = Math.PI / 2;
+    sign.scale.x = -1;
+    sign.position.set(-12.1, 2.05, 1200 - remaining);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.95, 0.12), finish.material);
+    post.position.set(-12.1, 0.975, 1200 - remaining);
+    group.add(sign, post);
+  }
   place('course-tractor', -18.5, -17.0, -0.28);
   const crowd = batch();
   for (const centre of [10, 1193]) {

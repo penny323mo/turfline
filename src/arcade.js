@@ -10,8 +10,8 @@ import {
   cancel,
   start,
   changeSpeed,
-  elapsed,
   snapshot,
+  snapshotAt,
   settle,
   next,
   refill,
@@ -19,6 +19,7 @@ import {
 } from "./race.js";
 import { openGameSave } from "./game-save.js";
 import { raceAudio } from "./race-audio.js";
+import { finishReplay } from "./replay.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
@@ -44,6 +45,8 @@ const status = (msg) => {
   $("message").textContent = msg;
 };
 const audio = raceAudio();
+const finishCam = { id: "line", name: "終點定鏡", en: "FINISH LINE" };
+const raceCameras = [...cameras, finishCam];
 let game = newGame(),
   save,
   stage,
@@ -54,7 +57,9 @@ let game = newGame(),
   lastOrder = "",
   lastPhase = "",
   lastBell = "",
-  radar = null;
+  radar = null,
+  replay = null,
+  previousView = null;
 const cameraState = {
   selected: 0,
   cam: "track",
@@ -63,11 +68,14 @@ const cameraState = {
   visible: true,
   speed: 1,
   get holdFrame() {
-    return game.race.phase !== "running";
+    return replay ? !replay.playing : game.race.phase !== "running";
+  },
+  get staticPose() {
+    return game.race.phase === "settled" && !replay?.playing;
   },
   courseFrame() {
     if (game.race.phase === "open") return null;
-    return { ...snapshot(game.race), stopped: game.race.phase === "settled" };
+    return replay ? snapshotAt(game.race, replay.position()) : snapshot(game.race);
   },
 };
 document.querySelectorAll("[data-icon]").forEach((el) => {
@@ -87,7 +95,7 @@ const options = horses
   .join("");
 for (const key of ["pick", "second", "fs-horse"]) $(key).innerHTML = options;
 $("second").value = "1";
-$("fs-camera").innerHTML = cameras
+$("fs-camera").innerHTML = raceCameras
   .map((c) => '<option value="' + c.id + '">' + c.name + "</option>")
   .join("");
 $("camera-switch").innerHTML = cameras
@@ -115,13 +123,13 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   cameraState.selected = horse;
   cameraState.cam = cam;
   const h = horses[horse],
-    i = cameras.findIndex((c) => c.id === cam);
+    i = raceCameras.findIndex((c) => c.id === cam);
   $("hero-bib").textContent = pad(h.number);
   $("hero-name").textContent = h.name;
   $("hero-en").textContent = h.en.toUpperCase();
   $("cam-label").textContent = radar
     ? "2D　/　RACE RADAR"
-    : "CAM " + pad(i + 1) + "　/　" + cameras[i].en;
+    : "CAM " + pad(i + 1) + "　/　" + raceCameras[i].en;
   $("tracking-mark").textContent = pad(h.number);
   $("fs-horse").value = quickFocus.value = String(horse);
   $("fs-camera").value = cam;
@@ -134,6 +142,11 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   }
   if (changed) stage?.cut();
   if (radar) drawRadar();
+}
+function priceCell(race, key, runner) {
+  const price = odds(race, key, [runner]).toFixed(1);
+  if (race.phase !== "open") return price;
+  return `<button class="card-price" data-price="${key}" data-runner="${runner}" aria-label="${horses[runner].name}，${markets[key]}，賠率 ${price}">${price}</button>`;
 }
 function field() {
   const r = game.race;
@@ -155,9 +168,9 @@ function field() {
         '</small></td><td class="style-col">' +
         styles[i] +
         "</td><td>" +
-        odds(r, "win", [i]).toFixed(1) +
+        priceCell(r, "win", i) +
         "</td><td>" +
-        odds(r, "place", [i]).toFixed(1) +
+        priceCell(r, "place", i) +
         '</td><td><button data-focus="' +
         i +
         '" class="follow" aria-label="追蹤' +
@@ -212,7 +225,22 @@ function pickMarket(key) {
   for (const b of $("market-tabs").children)
     b.setAttribute("aria-pressed", String(b.dataset.market === market));
   $("market-hint").textContent = marketHints[key];
+  showForm();
   quote();
+}
+function showForm() {
+  const recent = game.history.filter((race) => race.number < game.race.number).slice(0, 3);
+  $("form-guide").hidden = !recent.length;
+  if (!recent.length) return;
+  const rows = selectedPicks().map((runner) => {
+    const ranks = recent.map((race) => {
+      const rank = race.order.indexOf(runner) + 1;
+      const label = `第 ${race.number} 場，第 ${rank} 名`;
+      return `<span class="form-rank" title="${label}" aria-label="${label}">${rank}</span>`;
+    });
+    return `<div><span>${horses[runner].name}</span>${ranks.join("")}</div>`;
+  });
+  $("form-guide").innerHTML = "<b>近績 · 最近場次在先</b>" + rows.join("");
 }
 function ladder(order) {
   return (
@@ -281,6 +309,8 @@ function display() {
   const r = game.race,
     opened = r.phase === "open",
     done = r.phase === "settled";
+  if (replay && (replay.raceNumber !== r.number || !done)) leaveReplay();
+  showReplayControls();
   $("balance").textContent = format(game.balance);
   $("meet-name").textContent = r.name;
   $("meet-number").textContent = "R" + pad(r.number);
@@ -290,13 +320,15 @@ function display() {
   $("start").disabled = !ready || busy;
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
-  $("phase").textContent = opened
+  $("phase").textContent = replay
+    ? "終點重播"
+    : opened
     ? "接受投注"
     : done
       ? "賽事完成"
       : "賽事進行中";
-  $("live-status").textContent = opened ? "PADDOCK" : done ? "RESULT" : "LIVE";
-  $("subject-label").textContent = opened ? "PADDOCK FEED" : "TRACKING";
+  $("live-status").textContent = replay ? "REPLAY" : opened ? "PADDOCK" : done ? "RESULT" : "LIVE";
+  $("subject-label").textContent = replay ? "FINISH REPLAY" : opened ? "PADDOCK FEED" : "TRACKING";
   $("refill").hidden = !(opened && game.balance < 10 && !r.tickets.length);
   $("field-tag").textContent = opened
     ? "6 匹出賽"
@@ -348,6 +380,7 @@ function display() {
   cameraState.speed = r.phase === "running" ? r.speed : 1;
   field();
   ticketPanel();
+  showForm();
   quote();
   tick();
 }
@@ -383,12 +416,14 @@ function tick() {
     stage?.cut();
   }
   let snap;
+  $("race-bug").hidden = !live && !replay;
   if (!r.plan) {
     $("distance-label").textContent = "起步至終點　1,200 米";
     $("progress").style.width = "0%";
     $("countdown").hidden = true;
   } else {
-    snap = snapshot(r);
+    snap = replay ? snapshotAt(r, replay.position()) : snapshot(r);
+    if (replay) renderReplayClock(snap.t);
     const count = Math.ceil(-snap.t);
     $("countdown").hidden = !live || count <= 0;
     if (count > 0) $("countdown").textContent = count;
@@ -404,6 +439,11 @@ function tick() {
       ((LENGTH - snap.remaining) / LENGTH) * 100 + "%";
     const order = r.settlement?.order ?? snap.order,
       k = order.join("-");
+    if (live || replay) {
+      $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? format(snap.remaining) + " m" : "衝線";
+      const rank = snap.order.indexOf(cameraState.selected) + 1;
+      $("bug-rank").textContent = count > 0 ? "第 " + horses[cameraState.selected].number + " 檔" : "焦點馬 第 " + rank + " 位";
+    }
     if (k !== lastOrder) {
       lastOrder = k;
       if ($("running-ladder")) $("running-ladder").innerHTML = ladder(order);
@@ -490,7 +530,7 @@ $("market-tabs").onclick = (e) => {
   if (b) pickMarket(b.dataset.market);
 };
 $("pick").onchange = () => pickMarket(market);
-$("second").onchange = quote;
+$("second").onchange = () => { showForm(); quote(); };
 $("stake").oninput = quote;
 function setStake(n) {
   $("stake").value = String(n);
@@ -508,6 +548,14 @@ $("camera-switch").onclick = (e) => {
   if (b) updateCamera(cameraState.selected, b.dataset.cam);
 };
 $("field-body").onclick = (e) => {
+  const price = e.target.closest("[data-price]");
+  if (price && game.race.phase === "open") {
+    $("pick").value = price.dataset.runner;
+    pickMarket(price.dataset.price);
+    updateCamera(Number(price.dataset.runner));
+    $("pick").focus();
+    return;
+  }
   const b = e.target.closest("[data-focus]");
   if (b) updateCamera(Number(b.dataset.focus));
 };
@@ -515,6 +563,66 @@ $("fs-horse").onchange = quickFocus.onchange = (e) =>
   updateCamera(Number(e.target.value));
 $("fs-camera").onchange = (e) =>
   updateCamera(cameraState.selected, e.target.value);
+function showReplayControls() {
+  const available = ready && game.race.phase === "settled";
+  $("watch-replay").hidden = $("fs-replay").hidden = !available || !!replay;
+  $("replay-deck").hidden = !replay;
+  $("stage").classList.toggle("replaying", !!replay);
+  const line = $("fs-camera").querySelector('[value="line"]');
+  line.hidden = line.disabled = !replay;
+}
+function renderReplayClock(t) {
+  $("replay-scrub").value = t;
+  $("replay-scrub").setAttribute("aria-valuetext", time(t));
+  $("replay-time").textContent = time(t);
+  const label = replay.playing ? "暫停" : t >= replay.to ? "再播" : "播放";
+  if ($("replay-play").textContent !== label) {
+    $("replay-play").textContent = label;
+    stage?.cut();
+  }
+}
+function beginReplay() {
+  if (replay || game.race.phase !== "settled") return;
+  previousView = { horse: cameraState.selected, cam: cameraState.cam };
+  replay = finishReplay(game.race);
+  $("replay-scrub").min = replay.from;
+  $("replay-scrub").max = replay.to;
+  $("replay-rate").value = String(replay.rate);
+  updateCamera(game.race.settlement.order[0], "track");
+  stage?.cut();
+  display();
+  $("replay-play").focus({ preventScroll: true });
+}
+function leaveReplay() {
+  replay = null;
+  updateCamera(previousView.horse, previousView.cam);
+  previousView = null;
+  stage?.cut();
+}
+$("watch-replay").onclick = $("fs-replay").onclick = beginReplay;
+$("replay-play").onclick = () => {
+  replay.toggle();
+  stage?.cut();
+  tick();
+};
+$("replay-scrub").oninput = (e) => {
+  replay.pauseAt(Number(e.target.value));
+  stage?.cut();
+  tick();
+};
+$("replay-rate").onchange = (e) => replay.setRate(Number(e.target.value));
+$("replay-line").onclick = () => {
+  replay.pauseAt(replay.winnerTime);
+  updateCamera(game.race.settlement.order[0], radar ? "track" : "line");
+  stage?.cut();
+  tick();
+};
+$("replay-exit").onclick = () => {
+  leaveReplay();
+  display();
+  const full = document.fullscreenElement || $("stage").classList.contains("expanded");
+  $(full ? "fs-replay" : "watch-replay").focus({ preventScroll: true });
+};
 $("sound").onclick = async () => {
   try {
     const on = await audio.toggle();
@@ -542,6 +650,8 @@ function fullInfo() {
     !!document.fullscreenElement || $("stage").classList.contains("expanded");
   $("full").innerHTML = icon(full ? "shrink" : "expand");
   $("full").setAttribute("aria-label", full ? "離開全螢幕" : "全螢幕");
+  if (full) $("stage").append($("replay-deck"));
+  else document.querySelector(".broadcast-strip").after($("replay-deck"));
 }
 document.addEventListener("fullscreenchange", fullInfo);
 document.addEventListener("keydown", (e) => {
@@ -622,6 +732,14 @@ function drawRadar(s = snapshotIfRunning()) {
   ctx.fillStyle = "#395839";
   ctx.fillRect(0, 0, w, h);
   const maxD = s ? Math.max(...s.ds) : 0;
+  const from = replay ? LENGTH - 140 : 0;
+  const to = replay ? LENGTH + 25 : Math.max(LENGTH, maxD);
+  const xFor = (d) => w * (0.10 + 0.80 * Math.max(0, Math.min(1, (d - from) / (to - from))));
+  ctx.fillStyle = "#f1f5d9";
+  ctx.fillRect(xFor(LENGTH), h * 0.16, 2, h * 0.66);
+  ctx.textAlign = "center";
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillText("終點", xFor(LENGTH), h * 0.14);
   for (const [i, horse] of horses.entries()) {
     const y = h * (0.22 + i * 0.108);
     ctx.strokeStyle = "#8ea885";
@@ -629,9 +747,7 @@ function drawRadar(s = snapshotIfRunning()) {
     ctx.moveTo(w * 0.05, y + 10);
     ctx.lineTo(w * 0.95, y + 10);
     ctx.stroke();
-    const x = s
-      ? w * (0.12 + (0.75 * Math.max(0, s.ds[i])) / Math.max(LENGTH, maxD))
-      : w * (0.28 + i * 0.06);
+    const x = s ? xFor(s.ds[i]) : xFor(0);
     ctx.fillStyle = horse.color;
     ctx.beginPath();
     ctx.arc(x, y, 12, 0, Math.PI * 2);
@@ -649,7 +765,7 @@ function drawRadar(s = snapshotIfRunning()) {
   }
 }
 function snapshotIfRunning() {
-  return game.race.plan ? snapshot(game.race) : null;
+  return replay ? snapshotAt(game.race, replay.position()) : game.race.plan ? snapshot(game.race) : null;
 }
 async function init() {
   save = await openGameSave();

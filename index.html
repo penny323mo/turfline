@@ -70,6 +70,9 @@
                 ><b></b><span id="live-status">PADDOCK</span></span
               ><span class="feed-id" id="cam-label">CAM 01　/　TRACKSIDE</span>
             </div>
+            <div class="race-bug" id="race-bug" hidden>
+              <strong id="bug-distance"></strong><span id="bug-rank"></span>
+            </div>
             <button class="fullscreen" id="full" aria-label="全螢幕">
               <i data-icon="expand"></i>
             </button>
@@ -97,7 +100,7 @@
                 ></select></label
               ><label
                 >機位<select id="fs-camera" aria-label="全屏鏡頭"></select
-              ></label>
+              ></label><button type="button" id="fs-replay" hidden>終點重播</button>
             </div>
             <div class="loading" id="loading" role="status">
               <b class="loader"></b>正在載入馬場
@@ -125,6 +128,17 @@
             <div class="race-progress"><span id="progress"></span></div>
             <button class="start-btn" id="start" disabled>封盤開跑　▶</button
             ><button class="start-btn" id="speed" hidden>轉播 1×</button>
+            <button class="start-btn" id="watch-replay" hidden>終點重播　↺</button>
+          </div>
+          <div class="replay-deck" id="replay-deck" aria-label="終點重播控制" hidden>
+            <div class="replay-clock"><b>終點重播</b><output id="replay-time"></output></div>
+            <input id="replay-scrub" type="range" step="0.01" aria-label="重播賽事時間" />
+            <div class="replay-keys">
+              <button type="button" id="replay-play">暫停</button>
+              <select id="replay-rate" aria-label="重播速度"><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select>
+              <button type="button" id="replay-line">頭馬壓線</button>
+              <button type="button" id="replay-exit">返回賽果</button>
+            </div>
           </div>
         </section>
         <aside class="slip panel" aria-label="投注單">
@@ -152,6 +166,7 @@
             <label id="second-field" class="bet-field" hidden
               >配搭馬匹<select id="second" aria-label="配搭馬匹"></select
             ></label>
+            <div class="form-guide" id="form-guide" hidden></div>
             <div class="stake-row">
               <label for="stake">投注代幣</label
               ><span>賠率 <b id="price">—</b></span>

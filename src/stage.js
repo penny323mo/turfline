@@ -131,15 +131,17 @@ export async function startStage(canvas, state, refresh) {
           : spec.x + 0.1 * Math.sin(t * 0.38 + i),
         0,
         race
-          ? race.ds[i] - 1.25
+          ? race.ds[i]
           : z + spec.z + 1.65 * Math.sin(t * 0.32 + i * 0.88),
       );
-      if (software) patches[i].position.set(g.position.x, 0.012, g.position.z);
-      g.rotation.y = 0.008 * Math.cos(t * 0.38 + i);
-      if (race && (cut || race.t <= 0 || race.stopped))
+      g.rotation.y = 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
+      // Sample the same stride from race time in live coverage and on replay.
+      if (race)
         actors[i].seek(Math.max(0, race.t) + i * 0.147, race.t > 0, 16);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
+      if (race) g.position.z -= actors[i].noseLead;
+      if (software) patches[i].position.set(g.position.x, 0.012, g.position.z);
     }
     focus.copy(actors[state.selected].group.position);
     const venue = venueShots[state.cam];
@@ -154,6 +156,10 @@ export async function startStage(canvas, state, refresh) {
           .sub(look)
           .multiplyScalar(1.9 / camera.aspect)
           .add(look);
+    } else if (state.cam === "line") {
+      eye.set(-17 * screenWidthBias, 8.2 * screenWidthBias, 1200);
+      look.set(0, 1.2, 1200);
+      fov = 36;
     } else if (state.cam === "track") {
       eye
         .copy(focus)
@@ -182,8 +188,11 @@ export async function startStage(canvas, state, refresh) {
     camera.position.lerp(eye, a);
     aim.lerp(look, a);
     camera.lookAt(aim);
+    // Keep the near-side timing cabinet out of the finish camera's sightline.
+    camera.near = state.cam === "line" ? Math.max(1, eye.distanceTo(look) - 9.8) : 0.08;
     camera.fov = fov / (state.zoom || 1);
     camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
     sun.position.set(aim.x - 18, 36, aim.z + 20);
     sun.target.position.copy(aim);
     const marker = document.getElementById("tracking-mark");
@@ -212,7 +221,7 @@ export async function startStage(canvas, state, refresh) {
       lastFrame = 0;
       return;
     }
-    if (!cut && (state.paused || venueShots[state.cam] || (software && state.holdFrame))) return;
+    if (!cut && (state.paused || state.staticPose || venueShots[state.cam] || (software && state.holdFrame))) return;
     const fps = !document.hasFocus() ? 6 : software ? 18 : 45;
     if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
     // Do not enqueue another complete frame while the previous one is pending.
