@@ -118,6 +118,7 @@ test("the foremost animated muzzle vertex meets the official line at every sampl
       tip = Math.max(tip, point.z);
     }
     assert.ok(Math.abs(tip - 1200) < 0.0001);
+    assert.ok(Math.abs(horse.nosePosition(new Vector3()).z - tip) < 0.0001);
   }
 });
 

@@ -251,3 +251,28 @@ test("hoof-by-hoof replay finds both neighbouring strikes of the selected runner
   }
   assert.equal(JSON.stringify(game),wallet);
 });
+
+test("finish review stops at each official crossing and compares consecutive runners without resettling tickets", () => {
+  const rng = seeded(71), game = newGame(rng);
+  for (const [id,market,picks,stake] of [
+    ["a","win",[3],20], ["b","place",[1],10], ["c","pair",[3,1],10], ["d","win",[4],10],
+  ]) wager(game,{id,market,picks,stake});
+  start(game,0,rng);
+  settle(game,200000);
+  assert.deepEqual(game.race.settlement,{order:[3,1,4,2,0,5],stake:50,paid:287});
+  assert.deepEqual(game.race.tickets.map(ticket => ticket.paid),[138,21,128,0]);
+  assert.equal(game.balance,1237);
+  const before = JSON.stringify(game), order = game.race.settlement.order;
+  const review = finishReplay(game.race,() => 0);
+  for (const [rank,runner] of order.entries()) {
+    const crossing = review.crossing(runner);
+    const other = order[rank === 0 ? 1 : rank-1];
+    assert.equal(crossing.rank,rank+1);
+    assert.equal(crossing.other,other);
+    assert.equal(crossing.gap,Math.abs(game.race.plan[runner].finish-game.race.plan[other].finish));
+    review.pauseAt(crossing.time);
+    assert.equal(review.position(),game.race.plan[runner].finish);
+    assert.ok(Math.abs(distance(game.race.plan[runner],review.position())-1200)<1e-9);
+  }
+  assert.equal(JSON.stringify(game),before);
+});

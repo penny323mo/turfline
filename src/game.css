@@ -875,3 +875,10 @@
   .arcade .camera-switch button { font-size: 11px; min-height: 40px; padding-inline: 2px; }
   .arcade .live-controls .quick-focus, .arcade .live-controls .sounds { min-height: 32px; }
 }
+
+
+#finish-guide, #finish-nose { position: absolute; pointer-events: none; }
+#finish-guide { inset-block: 0; border-left: 1px dashed #f5e6a7b3; }
+#finish-nose { width: 17px; height: 17px; border: 2px solid #ffe6a0; border-radius: 50%;
+  transform: translate(-50%,-50%); box-shadow: 0 0 0 1px #3c352e; }
+.stage[data-shot="radar"] :is(#finish-nose,#finish-guide) { display: none; }

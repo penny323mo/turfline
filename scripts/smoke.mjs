@@ -216,6 +216,12 @@ try {
   await waitText(page, "#cam-label", "CAM 04　/　FINISH LINE");
   assert.equal(await page.locator("#replay-time").innerText(),
     await page.locator('[data-gap="' + order[0] + '"]').innerText());
+  await page.selectOption("#crossing-rank",String(order[1]));
+  await waitText(page, "#bug-distance", "第 2 名過線");
+  await waitText(page, "#hero-bib", String(order[1]+1).padStart(2,"0"));
+  assert.equal(await page.locator("#replay-time").innerText(),await page.locator('[data-gap="'+order[1]+'"]').innerText());
+  await page.locator("#finish-nose").waitFor({state:"visible"});
+  await waitText(peer, "#balance", expected);
   await page.locator("#replay-scrub").focus();
   await page.keyboard.press("Home");
   await page.locator("#replay-play").click();

@@ -120,6 +120,7 @@ export function makeAyanHorse(spec) {
   let travelled = 0;
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
   let noseLead = 0;
+  const noseTip = new THREE.Vector3();
   function placeRider(phase, weight, short, walking) {
     // SkinnedMesh refreshes its bind inverse in updateMatrixWorld. Start each
     // solve from the same mount origin so scrubbing also works between renders.
@@ -137,7 +138,11 @@ export function makeAyanHorse(spec) {
     noseLead = -Infinity;
     for (const vertex of muzzleVertices) {
       body.getVertexPosition(vertex, contact).applyMatrix4(bodyToMount);
-      noseLead = Math.max(noseLead, contact.z * yawCos - contact.x * yawSin);
+      const lead = contact.z * yawCos - contact.x * yawSin;
+      if (lead > noseLead) {
+        noseLead = lead;
+        noseTip.copy(contact);
+      }
     }
     const {heave, pitch, shoulderRoll} = bodyMotion(phase);
     const a = phase * Math.PI * 2;
@@ -211,5 +216,8 @@ export function makeAyanHorse(spec) {
   function hoofPosition(hoof, target) {
     return body.getVertexPosition(limbs[hoof].sole, target).applyMatrix4(body.matrixWorld);
   }
-  return { group, update, walk, waitAt, restNose, seek, seekDistance, hoofPosition, get noseLead() { return noseLead; } };
+  function nosePosition(target) {
+    return mount.localToWorld(target.copy(noseTip));
+  }
+  return { group, nosePosition, update, walk, waitAt, restNose, seek, seekDistance, hoofPosition, get noseLead() { return noseLead; } };
 }

@@ -42,6 +42,10 @@ const time = (t) =>
   Math.floor((t % 1) * 100)
     .toString()
     .padStart(2, "0");
+function finishTime(seconds) {
+  const ms = Math.round(seconds*1000);
+  return Math.floor(ms/60000) + ":" + pad(Math.floor(ms/1000)%60) + "." + String(ms%1000).padStart(3,"0");
+}
 const marketHints = {
   win: "選中第一名馬匹",
   place: "選中頭兩名其中一匹",
@@ -77,6 +81,11 @@ const cameraState = {
   time: 0.8,
   paused: false,
   visible: true,
+  get finishReview() {
+    if (!replay || replay.playing || this.cam !== "line") return null;
+    const crossing = replay.crossing(this.selected);
+    return crossing && Math.abs(replay.position()-crossing.time) < 0.000001 ? crossing : null;
+  },
   get studyMode() { return replay?.scope === "stride"; },
   get studyHoof() {
     if (replay?.scope !== "stride" || replay.playing) return null;
@@ -423,7 +432,7 @@ function display() {
       ' 張注單。點選下列馬匹可即時跟拍。</p><div id="running-ladder"></div>';
   if (done)
     for (const slot of $("closed").querySelectorAll("[data-gap]"))
-      slot.textContent = time(r.plan[Number(slot.dataset.gap)].finish);
+      slot.textContent = finishTime(r.plan[Number(slot.dataset.gap)].finish);
   if (done) $("next").onclick = () => act((g) => next(g), "新一場已開放投注。");
   $("result").hidden = !done;
   if (done) {
@@ -444,7 +453,7 @@ function display() {
         )
         .join("") +
       '</div><p class="result-summary">頭馬時間 ' +
-      time(r.plan[s.order[0]].finish) +
+      finishTime(r.plan[s.order[0]].finish) +
       "　·　本場淨額 " +
       (s.paid - s.stake >= 0 ? "+" : "") +
       format(s.paid - s.stake) +
@@ -525,7 +534,7 @@ function tick() {
     if (!live && !replay) {
       const winnerTime = r.plan[r.settlement.order[0]].finish;
       const motion = snap.t < runOutEnd(r) ? "過線收步" : "賽事完成";
-      $("distance-label").textContent = motion + "　·　頭馬時間 " + time(winnerTime);
+      $("distance-label").textContent = motion + "　·　頭馬時間 " + finishTime(winnerTime);
     }
     $("progress").style.width =
       ((LENGTH - snap.remaining) / LENGTH) * 100 + "%";
@@ -538,6 +547,11 @@ function tick() {
       $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? section + "　" + format(snap.remaining) + " m" : result;
       const rank = snap.order.indexOf(cameraState.selected) + 1;
       $("bug-rank").textContent = count > 0 ? "第 " + horses[cameraState.selected].number + " 檔" : "焦點馬 第 " + rank + " 位";
+      const crossing = cameraState.finishReview;
+      if (crossing) {
+        $("bug-distance").textContent = "第 " + crossing.rank + " 名過線";
+        $("bug-rank").textContent = (crossing.rank === 1 ? "快次名 " : "落後前一名 ") + crossing.gap.toFixed(3) + " 秒";
+      }
     }
     if (k !== lastOrder) {
       lastOrder = k;
@@ -675,9 +689,15 @@ function showReplayControls() {
 }
 function renderReplayClock(t) {
   $("replay-scrub").value = t;
-  const labelTime = t < 0 ? "−" + time(-t) : time(t);
+  const crossing = cameraState.finishReview;
+  const labelTime = crossing ? finishTime(crossing.time) : t < 0 ? "−" + time(-t) : time(t);
   $("replay-scrub").setAttribute("aria-valuetext", labelTime);
   $("replay-time").textContent = labelTime;
+  $("crossing-rank").hidden = !crossing;
+  $("replay-line").hidden = !!crossing || replay.scope === "stride";
+  if (crossing) $("crossing-rank").value = String(cameraState.selected);
+  if (replay.scope !== "stride")
+    $("subject-label").textContent = crossing ? "終點判讀" : "RACE REPLAY";
   if (replay.scope === "stride") {
     const {previous,current,next} = replay.footsteps(cameraState.selected,t);
     $("previous-hoof").disabled = !previous;
@@ -725,6 +745,9 @@ function playScope(scope, first = false) {
 }
 function beginReplay() {
   if (replay || game.race.phase !== "settled") return;
+  const picker = $("crossing-rank");
+  picker.replaceChildren(...game.race.settlement.order.map((i,rank) =>
+    new Option("第 " + (rank+1) + " 名壓線 · " + pad(horses[i].number) + " " + horses[i].name,String(i))));
   previousView = { horse: cameraState.selected, cam: cameraState.cam };
   playScope("finish", true);
   $("replay-play").focus({ preventScroll: true });
@@ -773,12 +796,18 @@ $("replay-rate").onchange = (e) => {
   replay.setRate(Number(e.target.value));
   syncSound();
 };
-$("replay-line").onclick = () => {
-  replay.pauseAt(replay.winnerTime);
-  updateCamera(game.race.settlement.order[0], forceMap ? "radar" : "line");
+function reviewCrossing(runner) {
+  const crossing = replay.crossing(runner);
+  replay.pauseAt(crossing.time);
+  updateCamera(runner,"line");
   stage?.cut();
   tick();
+}
+$("replay-line").onclick = () => {
+  reviewCrossing(game.race.settlement.order[0]);
+  $("crossing-rank").focus({preventScroll:true});
 };
+$("crossing-rank").onchange = e => reviewCrossing(Number(e.target.value));
 $("replay-exit").onclick = () => {
   leaveReplay();
   display();

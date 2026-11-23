@@ -3,7 +3,7 @@ import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 import { horses, duration, laneX } from "./data.js";
 import { cameraShot, fieldCamera, tracksideSide } from "./broadcast.js";
-import { bendLean, coursePoint } from "./course.js";
+import { bendLean, coursePoint, LENGTH } from "./course.js";
 import { linePose, racingDistance } from "./racing-line.js";
 
 import { paradePoint, ringCentre } from "./parade.js";
@@ -91,6 +91,10 @@ export async function startStage(canvas, state, refresh) {
       scene.environmentRotation.y = 1.2;
     });
   await Promise.all([land.ready, sky, loadAyanHorse()]);
+  // The finish lens looks along the same plane as its near-side housing.
+  // Keep the cabinet visible from every other camera.
+  const housingLayer = 1;
+  land.group.getObjectByName("finish-mirror").layers.set(housingLayer);
   const cullCourse = software ? land.prepareVisibility() : null;
   let actors = horses.map(makeAyanHorse);
   const loadedActors = new Map([[makeAyanHorse, actors]]);
@@ -137,6 +141,8 @@ export async function startStage(canvas, state, refresh) {
   const cameraFrame = new THREE.Matrix4(), inverseFrame = new THREE.Matrix4();
   const hoofMark = document.getElementById("hoof-mark"), solePoint = new THREE.Vector3();
   const replayDeck = document.getElementById("replay-deck"), orderStrip = document.getElementById("order-strip");
+  const finishNose = document.getElementById("finish-nose"), finishGuide = document.getElementById("finish-guide");
+  const nosePoint = new THREE.Vector3();
   const lowerThird = canvas.parentElement.querySelector(".lower-third");
   let cut = true,
     lastFrame = 0,
@@ -192,6 +198,7 @@ export async function startStage(canvas, state, refresh) {
   let lastTrackSide, lastParade;
   function place(dt) {
     const t = state.time;
+    const crossing = state.finishReview;
     const race = state.courseFrame?.();
     const parade = !!state.parade;
     const paradeTime = parade ? state.paradeTime : 0;
@@ -269,9 +276,18 @@ export async function startStage(canvas, state, refresh) {
       fov = frame.fov;
       fogDensity = frame.fogDensity;
     } else if (shot === "line") {
-      eye.set(-17 * screenWidthBias, 8.2 * screenWidthBias, 1200);
-      look.set(0, 1.2, 1200);
-      fov = 36;
+      if (crossing) {
+        const a = runnerPositions[state.selected].x, b = runnerPositions[crossing.other].x;
+        const spread = Math.abs(a-b), centre = (a+b)/2-spread*0.15;
+        const back = Math.max(10, 7+spread, 11/camera.aspect);
+        look.set(centre,0.85,1200);
+        eye.set(centre-back,0.85+back*0.55,1200);
+        fov = 38;
+      } else {
+        eye.set(-17 * screenWidthBias, 8.2 * screenWidthBias, 1200);
+        look.set(0, 1.2, 1200);
+        fov = 36;
+      }
     } else if (shot === "track") {
       const side = race && z > 18 ? tracksideSide(race.plan, state.selected, race.t, screenWidthBias) : -1;
       if (side !== lastTrackSide) cut = true;
@@ -342,14 +358,14 @@ export async function startStage(canvas, state, refresh) {
       aim.applyMatrix4(cameraFrame);
     }
     camera.lookAt(aim);
-    // Keep the near-side timing cabinet out of the finish camera's sightline.
+    if (shot === "line") camera.layers.disable(housingLayer);
+    else camera.layers.enable(housingLayer);
     let near = 0.08;
-    if (shot === "line") near = Math.max(1, eye.distanceTo(look) - 9.8);
     // Keep enough depth precision to separate the turf and its painted course.
     if (shot === "pack") near = camera.position.distanceTo(aim) * 0.25;
     camera.near = near;
     camera.fov = fov / (state.zoom || 1);
-    if (state.studyMode && canvasBox.contains(replayDeck)) {
+    if ((state.studyMode || crossing) && canvasBox.contains(replayDeck)) {
       const { width, height, top } = canvasBox.getBoundingClientRect();
       const bottomInset = Math.max(replayDeck.getBoundingClientRect().height,
         top+height-lowerThird.getBoundingClientRect().top) + 4;
@@ -364,6 +380,17 @@ export async function startStage(canvas, state, refresh) {
     cullCourse?.(camera,fogDensity,gl.drawingBufferHeight);
     const ayan = actors === loadedActors.get(makeAyanHorse);
     if (ayan) adjustDetail?.(camera,gl.drawingBufferHeight);
+    if (finishNose) {
+      finishNose.hidden = finishGuide.hidden = !crossing;
+      if (crossing) {
+        runnerFrames[state.selected].updateMatrixWorld(true);
+        actors[state.selected].nosePosition(nosePoint).project(camera);
+        finishNose.style.left = (nosePoint.x+1)*50 + "%";
+        finishNose.style.top = (1-nosePoint.y)*50 + "%";
+        const lineX = nosePoint.set(0,1.2,LENGTH).project(camera).x;
+        finishGuide.style.left = (lineX+1)*50 + "%";
+      }
+    }
     if (hoofMark) {
       const hoof = state.studyHoof;
       hoofMark.hidden = hoof == null;
@@ -397,7 +424,7 @@ export async function startStage(canvas, state, refresh) {
     sun.target.position.copy(aim);
     const marker = document.getElementById("tracking-mark");
     if (marker) {
-      marker.hidden = Boolean(venue) || shot === "track" || shot === "rider";
+      marker.hidden = Boolean(venue) || !!crossing || shot === "track" || shot === "rider";
       if (!marker.hidden) {
         const pt = runnerPositions[state.selected].clone();
         pt.y = 2.8;

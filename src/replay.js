@@ -19,6 +19,13 @@ export function finishReplay(race, clock = () => performance.now() / 1000, scope
     return contacts.get(runner);
   }
   return {
+    crossing(runner) {
+      const order = race.settlement.order, rank = order.indexOf(runner);
+      if (rank < 0) return null;
+      const other = order[rank === 0 ? 1 : rank - 1];
+      const time = race.plan[runner].finish;
+      return { rank: rank+1, other, time, gap: Math.abs(time-race.plan[other].finish) };
+    },
     changeFootfall(runner, index) {
       const stride = race.plan[runner].leadChanges?.[index];
       if (stride == null) return null;
