@@ -43,6 +43,8 @@ npm run preview
 
 Production 預覽預設使用本機 4174 埠。在另一個 Terminal 執行 `npm run smoke`，會以獨立瀏覽器資料測試落注、跨分頁同步、重載續賽、派彩及模型庫。macOS 可使用已安裝的 Google Chrome；亦可執行 `npx playwright-core install chromium` 安裝測試瀏覽器。以 `TURFLINE_URL` 指定網址，設 `TURFLINE_REALTIME=1` 可按真實時間完成測試賽事。
 
+使用 `npm run measure:playback` 可用 Chrome 嘅 SwiftShader 重播同一段六駒彎位。工具量度場邊、騎姿及廣角由畫布實際送到影片嘅格率。可透過 `TURFLINE_URL` 指定測試版本。
+
 推送到 `main` 後，[GitHub Actions](.github/workflows/pages.yml) 會安裝鎖定版本、執行規則測試、編譯、在專案子路徑運行 Chromium 測試，然後由 GitHub Pages 發佈同一份產物。
 
 ## 賽事與存檔
@@ -52,6 +54,8 @@ Production 預覽預設使用本機 4174 埠。在另一個 Terminal 執行 `npm
 遊戲在本機 IndexedDB 同一筆交易內更新注單、錢包及賽果，多個分頁亦只會結算一次。重新整理可繼續同一場。不同裝置或瀏覽器使用各自的存檔，清除網站資料會重置進度。若瀏覽器封鎖儲存，頁面會標明暫存模式。WebGL 2 可顯示完整 3D，設備無法建立 WebGL 場景時提供即時 2D 走位圖。
 
 ## 驗收模型
+
+- [軟件渲染實況對照](https://penny323mo.github.io/turfline/views/software-playback.mp4) 上下同步播放同一場彎位，保留瀏覽器實際輸出嘅影格間距。
 
 - [6 號馬實機慢鏡](https://penny323mo.github.io/turfline/views/rider-follow.mp4) 先用側鏡睇四蹄收放，再近看騎師雙手如何跟住馬頸伸收。
 

@@ -36,17 +36,17 @@ function sculpt() {
   let vertexCount = 0;
   function put(geometry, color, position, rotation = new THREE.Quaternion(), scale = [1, 1, 1]) {
     const matrix = new THREE.Matrix4().compose(vector(position), rotation, vector(scale));
-    const shape = geometry.index ? geometry.toNonIndexed() : geometry;
-    if (shape !== geometry) geometry.dispose();
-    shape.applyMatrix4(matrix);
-    shape.deleteAttribute('uv');
-    const count = shape.getAttribute('position').count;
+    geometry.applyMatrix4(matrix);
+    geometry.deleteAttribute('uv');
+    const count = geometry.getAttribute('position').count;
+    // Keep the shared sphere and cylinder vertices through skinning and export.
+    if (!geometry.index) geometry.setIndex(Array.from({length: count}, (_, i) => i));
     vertexCount += count;
     const c = new THREE.Color(color);
     const colors = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) c.toArray(colors, i * 3);
-    shape.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    parts.push(shape);
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    parts.push(geometry);
   }
   function joint(p, size, color, head = false) {
     put(new THREE.SphereGeometry(1, head ? 28 : 20, head ? 16 : 12), color, p,

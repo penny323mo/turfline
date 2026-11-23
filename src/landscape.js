@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { courseVisibility } from './course-visibility.js';
 import { laneX } from './data.js';
 import { coursePoint, raceOval, studioOval } from './course.js';
 import { LENGTH } from './race.js';
@@ -169,11 +170,14 @@ function courseChunk(index, onRaceCourse = false) {
   return { group, oakLocations };
 }
 
-function grassTufts() {
-  const b = batch(), rand = random(64083);
+function grassTufts(tiled) {
+  const rand = random(64083), tiles = new Map();
   const greens = ['#859259', '#a8ae70', '#b5b778', '#919f61', '#abb579'];
   for (let i = 0; i < 6000; i++) {
     const x = (rand() - 0.5) * 27, z = (rand() - 0.5) * 64;
+    const tile = tiled ? Math.floor((x+13.5)/8) + 4*Math.floor((z+32)/8) : 0;
+    if (!tiles.has(tile)) tiles.set(tile,batch());
+    const b = tiles.get(tile);
     const n = rand() < 0.8 ? 2 : 4;
     const tone = greens[Math.floor(rand() * greens.length)];
     for (let j = 0; j < n; j++) {
@@ -183,7 +187,10 @@ function grassTufts() {
         [xx + rand() * 0.1 - 0.018, height, zz + rand() * 0.055], tone);
     }
   }
-  return b.mesh(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: true }));
+  const group = new THREE.Group();
+  const material = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: true });
+  for (const tile of tiles.values()) group.add(tile.mesh(material));
+  return group;
 }
 
 // Continuous irregular ridgelines surround the race even when the camera changes direction.
@@ -474,12 +481,12 @@ async function addVenue(group, gateFrame, oval) {
   }
 }
 
-export function createLandscape(onRaceCourse = false) {
+export function createLandscape(onRaceCourse = false, software = false) {
   const group = new THREE.Group(), floor = turf(), mountains = ridges();
   const oval = onRaceCourse ? raceOval : studioOval;
   const chunks = Array.from({ length: onRaceCourse ? Math.round(raceOval.far / CHUNK) + 1 : 5 },
     (_, i) => courseChunk(i, onRaceCourse));
-  const grass = grassTufts(), secondGrass = grass.clone();
+  const grass = grassTufts(software), secondGrass = grass.clone();
   const gateFrame = new THREE.Group();
   function align(object, d) {
     const pt = onRaceCourse ? coursePoint(d) : { x: 0, z: d, heading: 0 };
@@ -487,7 +494,8 @@ export function createLandscape(onRaceCourse = false) {
     object.rotation.y = -pt.heading;
   }
   align(gateFrame, 0);
-  group.add(floor, mountains, grass, secondGrass, gateFrame, ovalTurf(oval), ...chunks.map(chunk => chunk.group));
+  const track = ovalTurf(oval);
+  group.add(floor, mountains, grass, secondGrass, gateFrame, track, ...chunks.map(chunk => chunk.group));
   let setGates;
   function update(playerZ = 0, raceSeconds = 0, showBackdrop = true) {
     setGates?.(raceSeconds);
@@ -503,6 +511,8 @@ export function createLandscape(onRaceCourse = false) {
     align(secondGrass, 64 + 128 * Math.round((playerZ - 64) / 128));
   }
   update();
-  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group, gateFrame, oval),
+  return { group, update,
+    prepareVisibility: () => courseVisibility(group,[grass,secondGrass],new Set([floor,track,...mountains.children])),
+    ready: Promise.all([grassReady, addOaks(chunks), addVenue(group, gateFrame, oval),
     loadVenueFile('starting-stalls').then(({ scene }) => { setGates = attachStartingStalls(gateFrame, scene); })]) };
 }

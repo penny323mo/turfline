@@ -1,16 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { AnimationMixer, Box3, Group, Quaternion, Vector3 } from "three";
+import { AnimationMixer, Box3, Group, Matrix4, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
 import { strideLength } from "../src/stride.js";
+import { prepareHorseDetail } from "../src/horse-detail.js";
 import { hoofContacts } from "../src/race-audio.js";
 import { newGame, start, distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
 import { bendEntry, bendExit, bendLean, coursePoint, laneTravel } from "../src/course.js";
 import { linePose, racingDistance } from "../src/racing-line.js";
 import { attachStartingStalls } from "../src/landscape.js";
-import { mountedViewBounds, placeRunnerFrame } from "../src/stage.js";
+import { ayanViewBox, mountedViewBounds, placeRunnerFrame } from "../src/stage.js";
 import { loadAyanHorse, makeAyanHorse } from "../src/horse-ayan.js";
 
 // Geometry checks use real meshes, skeletons and animations. The headless
@@ -73,7 +74,7 @@ test("software camera bounds enclose the mounted silhouette throughout a leaning
   await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
   const frame = new Group(), runner = makeAyanHorse(horses[2]);
   frame.add(runner.group);
-  const vertex = new Vector3(), centre = new Vector3();
+  const vertex = new Vector3(), centre = new Vector3(), toLocal = new Matrix4();
   for (let i = 0; i < 20; i++) {
     const lean = i % 2 ? 0.4 : -0.30;
     placeRunnerFrame(frame,{ x: 14, z: 47, heading: i * 0.19 },lean);
@@ -83,11 +84,13 @@ test("software camera bounds enclose the mounted silhouette throughout a leaning
     frame.updateMatrixWorld(true);
     runner.group.getWorldPosition(centre);
     centre.y += mountedViewBounds.height;
+    toLocal.copy(runner.group.matrixWorld).invert();
     runner.group.traverseVisible(mesh => {
       if (!mesh.isMesh) return;
       for (let j = 0; j < mesh.geometry.attributes.position.count; j++) {
         mesh.getVertexPosition(j,vertex).applyMatrix4(mesh.matrixWorld);
         assert.ok(vertex.distanceToSquared(centre) < mountedViewBounds.radius ** 2);
+        assert.ok(ayanViewBox.containsPoint(vertex.applyMatrix4(toLocal)));
       }
     });
   }
@@ -200,6 +203,44 @@ function gloveEnds(jacket,side) {
   assert.notEqual(min,max);
   return [min,max];
 }
+
+test("the fitted jockey keeps shared vertices across adjacent triangles", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const horse = makeAyanHorse(horses[0]);
+  for (const name of ["JockeyLegs","JockeyUpperBody"]) {
+    const geometry = horse.group.getObjectByName(name).geometry;
+    assert.ok(geometry.index && geometry.attributes.position.count < geometry.index.count / 2);
+  }
+});
+
+test("software detail selects and restores the original fittings as the camera zooms", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const actors = [makeAyanHorse(horses[0]),makeAyanHorse(horses[5])];
+  const subject = actors[0].group, jacket = subject.getObjectByName("JockeyUpperBody");
+  const full = jacket.geometry, body = subject.getObjectByName("Object_11"), coat = body.geometry;
+  const reins = subject.getObjectByName("RacingReins"), strap = reins.geometry;
+  const fit = await prepareHorseDetail(actors), camera = new PerspectiveCamera(35,1.75,0.08,2300);
+  function from(z,zoom = 1) {
+    camera.position.set(0,1.7,z);
+    camera.zoom = zoom;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    fit(camera,530);
+  }
+  from(85);
+  const wide = jacket.geometry;
+  assert.ok(wide.index.count < 0.45 * full.index.count);
+  assert.equal(wide.attributes,full.attributes);
+  assert.equal(wide.morphAttributes,full.morphAttributes);
+  from(2,4);
+  assert.equal(jacket.geometry,full);
+  from(85);
+  assert.equal(jacket.geometry,wide);
+  assert.equal(body.geometry,coat);
+  assert.equal(reins.geometry,strap);
+});
 
 test("airborne hooves swing clear, planted hooves track straight and the rider steadies their head", async () => {
   const bytes = await asset("horse-ayan.glb");

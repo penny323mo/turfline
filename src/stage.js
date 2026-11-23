@@ -15,6 +15,8 @@ const venueShots = {
 
 const bankFrame = new THREE.Matrix4();
 export const mountedViewBounds = { height: 1.35, radius: 3.5 };
+// Local envelope of the mounted Ayan model through flight, support and bank.
+export const ayanViewBox = new THREE.Box3(new THREE.Vector3(-0.54,-0.10,-2.48),new THREE.Vector3(0.54,2.70,1.78));
 export function placeRunnerFrame(frame, pt, lean) {
   // Shift the centre of mass inward in proportion to its height. The
   // support plane stays level even when both sides have a hoof down.
@@ -50,7 +52,7 @@ export async function startStage(canvas, state, refresh) {
   scene.fog = new THREE.FogExp2("#c6d5cc", 0.0085);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.08, 2300);
   const onRaceCourse = Boolean(state.courseFrame);
-  const land = createLandscape(onRaceCourse);
+  const land = createLandscape(onRaceCourse,software);
   land.group.scale.x = -1;
   scene.add(land.group);
   const hemi = new THREE.HemisphereLight(0xe8f3ff, 0xcdbe95, 1.35);
@@ -84,8 +86,12 @@ export async function startStage(canvas, state, refresh) {
       scene.environmentRotation.y = 1.2;
     });
   await Promise.all([land.ready, sky, loadAyanHorse()]);
+  const cullCourse = software ? land.prepareVisibility() : null;
   let actors = horses.map(makeAyanHorse);
   const loadedActors = new Map([[makeAyanHorse, actors]]);
+  const adjustDetail = software ? await import("./horse-detail.js")
+    .then(module => module.prepareHorseDetail(actors))
+    .catch(() => null) : null;
   const runnerFrames = actors.map(actor => {
     const frame = new THREE.Group();
     frame.add(actor.group);
@@ -94,6 +100,7 @@ export async function startStage(canvas, state, refresh) {
   });
   const runnerPositions = actors.map(() => new THREE.Vector3());
   const view = new THREE.Frustum(), viewProjection = new THREE.Matrix4();
+  const localView = new THREE.Frustum(), localProjection = new THREE.Matrix4();
   const mountedBounds = new THREE.Sphere(new THREE.Vector3(), mountedViewBounds.radius);
   const field = actors.map(() => ({ x: 0, z: 0, angle: 0, lean: 0 }));
   // Projected contact patches keep the horses grounded without a second
@@ -339,6 +346,9 @@ export async function startStage(canvas, state, refresh) {
     } else if (camera.view?.enabled) camera.clearViewOffset();
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    cullCourse?.(camera,fogDensity,gl.drawingBufferHeight);
+    const ayan = actors === loadedActors.get(makeAyanHorse);
+    if (ayan) adjustDetail?.(camera,gl.drawingBufferHeight);
     if (hoofMark) {
       const hoof = state.studyHoof;
       hoofMark.hidden = hoof == null;
@@ -356,7 +366,16 @@ export async function startStage(canvas, state, refresh) {
       view.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       for (const [i,p] of runnerPositions.entries()) {
         mountedBounds.center.set(p.x, p.y + mountedViewBounds.height, p.z);
-        runnerFrames[i].visible = patches[i].visible = view.intersectsSphere(mountedBounds);
+        let visible = view.intersectsSphere(mountedBounds);
+        if (visible && ayan) {
+          const subject = actors[i].group;
+          subject.updateWorldMatrix(true,false);
+          localView.setFromProjectionMatrix(localProjection.multiplyMatrices(viewProjection,subject.matrixWorld));
+          visible = localView.intersectsBox(ayanViewBox);
+        }
+        runnerFrames[i].visible = visible;
+        // The ground shadow can extend into frame while its horse is outside.
+        patches[i].visible = view.intersectsSphere(mountedBounds);
       }
     }
     sun.position.set(aim.x - 18, 36, aim.z + 20);
@@ -374,11 +393,13 @@ export async function startStage(canvas, state, refresh) {
     }
     cut = false;
   }
-  let pendingFrame, nextFrame = 0, wasStatic = false;
+  const pendingFrames = [];
+  let nextFrame = 0, wasStatic = false;
   function draw() {
     renderer.render(scene, camera);
     if (software) {
-      pendingFrame = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      if (fence) pendingFrames.push(fence);
       gl.flush();
     }
   }
@@ -392,15 +413,17 @@ export async function startStage(canvas, state, refresh) {
     if (wasStatic !== still) cut = true;
     wasStatic = still;
     if (!cut && (state.paused || still || venueShots[state.cam] || (software && state.holdFrame))) return;
-    const fps = software ? (document.hasFocus() ? 24 : 10) : (document.hasFocus() ? 60 : 30);
+    const focused = document.hasFocus();
+    const fps = software ? (focused ? 24 : 10) : (focused ? 60 : 30);
     const interval = 1000 / fps;
     if (!cut && now + 0.8 < nextFrame) return;
-    // Do not enqueue another complete frame while the previous one is pending.
-    if (pendingFrame) {
-      if (gl.clientWaitSync(pendingFrame, 0, 0) === gl.TIMEOUT_EXPIRED) return;
-      gl.deleteSync(pendingFrame);
-      pendingFrame = null;
+    // A foreground software renderer can prepare the next frame while the
+    // previous one finishes. Bound the queue to keep cuts and input responsive.
+    while (pendingFrames.length) {
+      if (gl.clientWaitSync(pendingFrames[0],0,0) === gl.TIMEOUT_EXPIRED) break;
+      gl.deleteSync(pendingFrames.shift());
     }
+    if (pendingFrames.length >= (focused ? 2 : 1)) return;
     const dt = lastFrame ? Math.min(0.24, (now - lastFrame) / 1000) : 0;
     // Carry the fractional interval across display refreshes, skipping missed
     // slots when the GPU stalls instead of trying to catch up in a burst.
