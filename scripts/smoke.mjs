@@ -136,6 +136,7 @@ try {
     await waitText(page, "#cam-label", "導播　/　TELEPHOTO");
   }
   for (const [cam, num] of [
+    ["radar", 3],
     ["pack", 5],
     ["aerial", 3],
     ["tele", 6],
@@ -143,6 +144,7 @@ try {
   ]) {
     await page.locator('[data-cam="' + cam + '"]').click();
     await page.locator(".quick-focus").selectOption(String(num - 1));
+    assert.equal(await page.locator("#race-map").isVisible(), cam === "radar");
     assert.equal(
       await page.locator("#hero-bib").innerText(),
       String(num).padStart(2, "0"),

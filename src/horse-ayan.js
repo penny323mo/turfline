@@ -120,7 +120,7 @@ export function makeAyanHorse(spec) {
     waist.rotation.x = weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
     upperBody.morphTargetInfluences[0] = weight * (1 - 0.55 * short) * (0.5 + 0.5 * Math.sin(a - 0.62));
   }
-  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0) {
+  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0) {
     travelled = distance;
     const phase = THREE.MathUtils.euclideanModulo(count, 1);
     // Interpolate adjacent IK solutions. Blending the two extremes lifts the
@@ -133,10 +133,13 @@ export function makeAyanHorse(spec) {
     }
     mixer.setTime(phase);
     placeRider(phase, weight, short);
+    // The boots stay in the irons as the shoulders turn into the running line.
+    waist.rotation.z = lean * 0.24;
+    waist.rotation.y = -lean * 0.39;
   }
-  function seekDistance(distance, running, stop) {
+  function seekDistance(distance, running, stop, lean = 0) {
     const step = raceStride(spec.number, distance, stop);
-    pose(distance, running ? step.weight : 0, step.count, step.short);
+    pose(distance, running ? step.weight : 0, step.count, step.short, lean);
   }
   function seek(time, running = false, speed = 0) {
     pose(running ? time * speed : 0, running ? 1 : 0);

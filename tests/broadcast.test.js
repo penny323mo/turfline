@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PerspectiveCamera, Vector3 } from "three";
-import { cameraShot, fieldCamera } from "../src/broadcast.js";
-import { laneX } from "../src/data.js";
+import { cameraShot, fieldCamera, tracksideSide } from "../src/broadcast.js";
+import { linePose } from "../src/racing-line.js";
 import { newGame, start, snapshotAt } from "../src/race.js";
-import { bendLean, coursePoint } from "../src/course.js";
+import { coursePoint } from "../src/course.js";
 
 test("director cuts follow the selected horse's distance and manual shots remain fixed", () => {
   const distances = [0, 150, 550, 720, 930, 1199, 1222];
@@ -21,17 +21,17 @@ test("whole-field perspective fits all six mounted silhouettes on desktop, portr
   for (let race = 0; race < 20; race++) {
     const game = newGame(rng);
     start(game, 0, rng);
-    if (race % 2) game.race.plan.forEach((horse) => { horse.early *= 3; });
+    if (race % 2) game.race.plan.forEach((horse) => { delete horse.line; horse.early *= 3; });
     for (const t of [-2, 15, 21, 34, 43, 64, 75]) {
       const ds = snapshotAt(game.race, t).ds;
       const axis = coursePoint((Math.min(...ds) + Math.max(...ds)) / 2);
       const centres = ds.map((d, i) => {
-        const p = coursePoint(d, laneX(i)), angle = p.heading - axis.heading;
+        const p = linePose(game.race.plan[i], i, d, 18), angle = p.heading - axis.heading;
         const dx = p.x - axis.x, dz = p.z - axis.z;
         return {
           x: dx * Math.cos(axis.heading) - dz * Math.sin(axis.heading) - 1.35 * Math.sin(angle),
           z: dx * Math.sin(axis.heading) + dz * Math.cos(axis.heading) - 1.35 * Math.cos(angle),
-          angle, lean: bendLean(d, 18, laneX(i)),
+          angle, lean: p.lean,
         };
       });
       for (const aspect of [0.46, 1.65, 2.03, 2.8]) {
@@ -56,5 +56,17 @@ test("whole-field perspective fits all six mounted silhouettes on desktop, portr
               }
       }
     }
+  }
+});
+
+test("trackside cuts give the mounted passer a clear outside camera during the bend overtake", () => {
+  let seed = 58;
+  const rng = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  const game = newGame(rng);
+  start(game, 0, rng);
+  const {plan} = game.race;
+  for (const t of [31,33,30,32]) {
+    assert.equal(tracksideSide(plan,2,t,1),1);
+    assert.equal(tracksideSide(structuredClone(plan),2,t,1),1);
   }
 });

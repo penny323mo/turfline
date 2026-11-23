@@ -1,6 +1,7 @@
 import { horses, cameras } from "./data.js";
 import { bendEntry, bendExit } from "./course.js";
 import { cameraShot, liveCameras, readView, saveView } from "./broadcast.js";
+import { createRadar } from "./radar.js";
 import { icon } from "./icons.js";
 import {
   newGame,
@@ -64,7 +65,7 @@ let game = newGame(),
   lastOrder = "",
   lastPhase = "",
   lastBell = "",
-  radar = null,
+  forceMap = false,
   replay = null,
   previousView = null;
 const cameraState = {
@@ -85,11 +86,15 @@ const cameraState = {
   courseFrame() {
     if (game.race.phase === "open") return null;
     const frame = replay ? snapshotAt(game.race, replay.position()) : snapshot(game.race);
+    frame.plan = game.race.plan;
     frame.speeds = game.race.plan.map((runner, i) => (frame.ds[i] - distance(runner, frame.t - 0.05)) / 0.05);
     frame.stops = game.race.plan.map(stopDistance);
     return frame;
   },
 };
+const mapCanvas = $("race-map");
+const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
+new ResizeObserver(() => drawRadar()).observe(mapCanvas);
 document.querySelectorAll("[data-icon]").forEach((el) => {
   el.outerHTML = icon(el.dataset.icon);
 });
@@ -160,8 +165,12 @@ function showOrder(order, label) {
 }
 function showShot(shot) {
   const i = raceCameras.findIndex((c) => c.id === shot);
-  $("stage").dataset.shot = radar ? "radar" : shot;
-  $("cam-label").textContent = radar ? "2D　/　RACE RADAR"
+  const mapActive = forceMap || cameraState.cam === "radar";
+  cameraState.visible = !mapActive;
+  mapCanvas.hidden = !mapActive;
+  if (mapActive) $("tracking-mark").hidden = true;
+  $("stage").dataset.shot = mapActive ? "radar" : shot;
+  $("cam-label").textContent = mapActive ? "2D　/　RACE RADAR"
     : (cameraState.cam === "auto" ? "導播" : "CAM " + pad(i + 1)) + "　/　" + raceCameras[i].en;
 }
 function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
@@ -176,7 +185,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   showShot(cameraShot(cam, distance));
   $("tracking-mark").textContent = pad(h.number);
   $("fs-horse").value = quickFocus.value = String(horse);
-  $("fs-camera").value = cam;
+  $("fs-camera").value = forceMap ? "radar" : cam;
   for (const b of $("camera-switch").children)
     b.setAttribute("aria-pressed", String(b.dataset.cam === cam));
   for (const b of orderButtons)
@@ -191,7 +200,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
     stage?.cut();
     syncSound();
   }
-  if (radar) drawRadar();
+  drawRadar();
 }
 function priceCell(race, key, runner) {
   const price = odds(race, key, [runner]).toFixed(1);
@@ -566,7 +575,7 @@ function tick() {
     }
   }
   syncSound(snap?.t);
-  if (radar) drawRadar(snap);
+  drawRadar(snap);
 }
 $("closed").addEventListener("click", (e) => {
   const b = e.target.closest("[data-follow]");
@@ -713,7 +722,7 @@ $("replay-rate").onchange = (e) => {
 };
 $("replay-line").onclick = () => {
   replay.pauseAt(replay.winnerTime);
-  updateCamera(game.race.settlement.order[0], radar ? "track" : "line");
+  updateCamera(game.race.settlement.order[0], forceMap ? "radar" : "line");
   stage?.cut();
   tick();
 };
@@ -778,7 +787,7 @@ document.addEventListener("keydown", (e) => {
     /INPUT|SELECT/.test(e.target.tagName)
   )
     return;
-  if (!radar && ["1", "2", "3", "4", "5"].includes(e.key))
+  if (!forceMap && /^[1-6]$/.test(e.key))
     updateCamera(cameraState.selected, liveCameras[Number(e.key) - 1].id);
 });
 function dialog(title, html) {
@@ -837,44 +846,7 @@ $("history-button").onclick = () =>
       : '<p class="empty-ticket">第一場完賽後，呢度會記錄名次、注項同派彩。</p>',
   );
 function drawRadar(s = snapshotIfRunning()) {
-  const ctx = radar.getContext("2d"),
-    w = radar.width,
-    h = radar.height;
-  ctx.fillStyle = "#395839";
-  ctx.fillRect(0, 0, w, h);
-  const maxD = s ? Math.max(...s.ds) : 0;
-  const from = replay && replay.scope !== "full" ? LENGTH - 140 : 0;
-  const to = replay?.scope === "finish" ? Math.max(LENGTH + 25, maxD) :
-    s && game.race.plan ? Math.max(...game.race.plan.map(stopDistance)) : LENGTH;
-  const xFor = (d) => w * (0.10 + 0.80 * Math.max(0, Math.min(1, (d - from) / (to - from))));
-  ctx.fillStyle = "#f1f5d9";
-  ctx.fillRect(xFor(LENGTH), h * 0.16, 2, h * 0.66);
-  ctx.textAlign = "center";
-  ctx.font = "bold 15px sans-serif";
-  ctx.fillText("終點", xFor(LENGTH), h * 0.14);
-  for (const [i, horse] of horses.entries()) {
-    const y = h * (0.22 + i * 0.108);
-    ctx.strokeStyle = "#8ea885";
-    ctx.beginPath();
-    ctx.moveTo(w * 0.05, y + 10);
-    ctx.lineTo(w * 0.95, y + 10);
-    ctx.stroke();
-    const x = s ? xFor(s.ds[i]) : xFor(0);
-    ctx.fillStyle = horse.color;
-    ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#101410";
-    ctx.textAlign = "center";
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(String(i + 1), x, y + 5);
-    if (i === cameraState.selected) {
-      ctx.strokeStyle = "#d9f66b";
-      ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
+  if (!mapCanvas.hidden) paintMap(game.race.plan, s?.ds, cameraState.selected);
 }
 function snapshotIfRunning() {
   return replay ? snapshotAt(game.race, replay.position()) : game.race.plan ? snapshot(game.race) : null;
@@ -913,10 +885,8 @@ async function init() {
     });
   } catch (err) {
     console.warn("3D rendering unavailable", err);
-    radar = document.createElement("canvas");
-    radar.width = 760;
-    radar.height = 380;
-    $("race-canvas").replaceWith(radar);
+    forceMap = true;
+    $("race-canvas").hidden = true;
     const note = document.createElement("span");
     note.className = "fallback-note";
     note.textContent = "2D 走位圖 · 3D 需 WebGL 2";

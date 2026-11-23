@@ -1,4 +1,6 @@
-export const LENGTH = 1200;
+import { LENGTH } from "./course.js";
+import { planRacingLines } from "./traffic.js";
+export { LENGTH } from "./course.js";
 export const RUN_OUT_SECONDS = 8;
 export const GATES = 3;
 export const STARTING_FUNDS = 1000;
@@ -109,6 +111,8 @@ export function start(game, now = Date.now(), rng = uniform) {
   requireOpen(game.race);
   const race = game.race;
   race.plan = drawPlan(race, rng);
+  const lines = planRacingLines(race.plan, distance, runOutEnd(race));
+  race.plan.forEach((h, i) => { h.line = lines[i]; });
   race.phase = "running";
   race.anchor = now + GATES * 1000;
   race.elapsed = 0;

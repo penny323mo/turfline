@@ -1,4 +1,4 @@
-import { LENGTH } from "./race.js";
+export const LENGTH = 1200;
 
 export const raceOval = { near: LENGTH - 480, far: LENGTH + 144, radius: 120 };
 export const studioOval = { near: -30, far: 1230, radius: 60 };

@@ -102,6 +102,7 @@ const libraryCards = [
     image: "track",
     text: "Ayan 賽駒依路程完成四拍疾馳。可逐格檢查四蹄着地，或者用同一機位比較牧場馬同低面數原型。",
     links: [
+      ["睇 3 號馬移出外疊超越", "./views/running-lines.mp4"],
       ["睇出閘至收步實況", "./views/gate-and-pull-up.mp4"],
       ["睇彎位馬步及半速側鏡", "./views/bend-gallop.mp4"],
       ["睇新舊馬步對照", "./views/gallop-comparison.mp4"],

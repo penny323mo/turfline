@@ -5,8 +5,9 @@ import { AnimationMixer, Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
 import { hoofContacts } from "../src/race-audio.js";
-import { distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
+import { newGame, start, distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
 import { bendEntry, bendExit, bendLean, coursePoint, laneTravel } from "../src/course.js";
+import { linePose, racingDistance } from "../src/racing-line.js";
 import { attachStartingStalls } from "../src/landscape.js";
 import { placeRunnerFrame } from "../src/stage.js";
 import { loadAyanHorse, makeAyanHorse } from "../src/horse-ayan.js";
@@ -207,12 +208,15 @@ test("audible strikes coincide with the first descent to turf of the correspondi
   const bytes = await asset("horse-ayan.glb");
   await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
   const soles = [14273, 12585, 13645, 11901], point = new Vector3();
-  for (const spec of horses) {
+  const game = newGame(() => 0.39);
+  start(game, 0, () => 0.39);
+  for (const [i,spec] of horses.entries()) {
     const runner = makeAyanHorse(spec), mesh = runner.group.getObjectByName("Object_11");
-    const plan = { finish: 68 + spec.number / 4, early: 0.01, surge: -0.008 };
+    const plan = game.race.plan[i];
     const height = (t, hoof) => {
-      const d = distance(plan, t), offset = laneX(spec.number - 1);
-      runner.seekDistance(laneTravel(d, offset), true);
+      const d = distance(plan, t);
+      const banking = linePose(plan,i,d,(d-distance(plan,t-0.02))/0.02).lean;
+      runner.seekDistance(racingDistance(plan,i,d), true, racingDistance(plan,i,stopDistance(plan)), banking);
       runner.group.updateMatrixWorld(true);
       return mesh.getVertexPosition(soles[hoof], point).applyMatrix4(mesh.matrixWorld).y;
     };

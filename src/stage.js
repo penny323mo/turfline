@@ -2,8 +2,9 @@ import * as THREE from "three";
 import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 import { horses, duration, laneX } from "./data.js";
-import { cameraShot, fieldCamera } from "./broadcast.js";
-import { bendLean, coursePoint, laneTravel } from "./course.js";
+import { cameraShot, fieldCamera, tracksideSide } from "./broadcast.js";
+import { bendLean, coursePoint } from "./course.js";
+import { linePose, racingDistance } from "./racing-line.js";
 
 const venueShots = {
   overview: { eye: [-355, 760, 600], target: [-60, 0, 600], fov: 55 },
@@ -170,6 +171,7 @@ export async function startStage(canvas, state, refresh) {
       if (runner !== undefined) state.onPick(runner);
     });
   }
+  let lastTrackSide;
   function place(dt) {
     const t = state.time;
     const race = state.courseFrame?.();
@@ -186,20 +188,22 @@ export async function startStage(canvas, state, refresh) {
       const spec = horses[i],
         g = actors[i].group;
       const d = race ? race.ds[i] : z + spec.z + 1.65 * Math.sin(t * 0.32 + i * 0.88);
-      const lane = race ? laneX(i) : spec.x;
+      const runner = race?.plan[i];
+      const lane = runner ? laneX(i) : spec.x;
       const moving = race ? THREE.MathUtils.smoothstep(race.speeds[i], 0, 3) : 1;
       const sway = race ? moving * 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i) : 0.1 * Math.sin(t * 0.38 + i);
-      const pt = onRaceCourse ? coursePoint(d, lane + sway) : { x: lane + sway, z: d, heading: 0 };
+      const pt = runner?.line ? linePose(runner, i, d, race.speeds[i]) :
+        onRaceCourse ? coursePoint(d, lane + sway) : { x: lane + sway, z: d, heading: 0 };
       const frame = runnerFrames[i];
-      const lean = onRaceCourse ? bendLean(d, race ? race.speeds[i] : 15.7, lane) : 0;
+      const lean = pt.lean ?? (onRaceCourse ? bendLean(d, race ? race.speeds[i] : 15.7, lane) : 0);
       field[i].angle = pt.heading;
       field[i].lean = lean;
       placeRunnerFrame(frame, pt, lean);
       g.position.set(0, 0, 0);
-      g.rotation.y = moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
+      g.rotation.y = runner?.line ? 0 : moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
       // Sample the same stride from race time in live coverage and on replay.
       if (race)
-        actors[i].seekDistance(laneTravel(d, lane), race.t > 0, laneTravel(race.stops[i], lane));
+        actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
       if (race) g.position.z = -actors[i].noseLead;
@@ -244,16 +248,34 @@ export async function startStage(canvas, state, refresh) {
       look.set(0, 1.2, 1200);
       fov = 36;
     } else if (shot === "track") {
+      const side = race && z > 18 ? tracksideSide(race.plan, state.selected, race.t, screenWidthBias) : -1;
+      if (side !== lastTrackSide) cut = true;
+      lastTrackSide = side;
+      const cameraWidth = 5.95 * screenWidthBias;
+      let height = Math.max(1.78, 7.7 / Math.max(1.6, 11 - side * focus.x)) * screenWidthBias;
+      if (race?.plan[state.selected].line && z > 18) {
+        for (const [i,p] of runnerPositions.entries()) {
+          if (i === state.selected) continue;
+          look.copy(p).applyMatrix4(inverseFrame).sub(focus);
+          const fraction = side * look.x / cameraWidth;
+          if (fraction <= 0 || fraction >= 1.1) continue;
+          const gap = Math.abs(look.z - fraction * 2.7 * screenWidthBias);
+          const cover = (1 - THREE.MathUtils.smoothstep(gap, 1.3, 4.5)) *
+            (1 - THREE.MathUtils.smoothstep(fraction, 0.85, 1.1));
+          const clearHeight = Math.min(8.5 * screenWidthBias, 0.35 + 2.4 / Math.max(0.15, fraction));
+          height = Math.max(height, THREE.MathUtils.lerp(1.78 * screenWidthBias, clearHeight, cover));
+        }
+      }
       eye
         .copy(focus)
         .add(
           new THREE.Vector3(
-            -5.95 * screenWidthBias,
-            1.78 * screenWidthBias,
+            side * cameraWidth,
+            height,
             2.7 * screenWidthBias,
           ),
         );
-      look.copy(focus).add(new THREE.Vector3(0.2, 1.2, 0.38));
+      look.copy(focus).add(new THREE.Vector3(-side * 0.2, 1.2, 0.38));
       if (race && z < 18) {
         const gateView = 1 - THREE.MathUtils.smoothstep(z, 2, 18);
         eye.lerp(new THREE.Vector3(-10 * screenWidthBias, 3.7, 13), gateView);
@@ -307,7 +329,7 @@ export async function startStage(canvas, state, refresh) {
     }
     cut = false;
   }
-  let pendingFrame, wasStatic = false;
+  let pendingFrame, nextFrame = 0, wasStatic = false;
   function draw() {
     renderer.render(scene, camera);
     if (software) {
@@ -318,14 +340,16 @@ export async function startStage(canvas, state, refresh) {
   function render(now) {
     if (!state.visible || document.hidden || !onScreen) {
       lastFrame = 0;
+      nextFrame = 0;
       return;
     }
     const still = state.staticPose;
     if (wasStatic !== still) cut = true;
     wasStatic = still;
     if (!cut && (state.paused || still || venueShots[state.cam] || (software && state.holdFrame))) return;
-    const fps = !document.hasFocus() ? 6 : software ? 18 : 60;
-    if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
+    const fps = software ? (document.hasFocus() ? 24 : 10) : (document.hasFocus() ? 60 : 30);
+    const interval = 1000 / fps;
+    if (!cut && now + 0.8 < nextFrame) return;
     // Do not enqueue another complete frame while the previous one is pending.
     if (pendingFrame) {
       if (gl.clientWaitSync(pendingFrame, 0, 0) === gl.TIMEOUT_EXPIRED) return;
@@ -333,6 +357,10 @@ export async function startStage(canvas, state, refresh) {
       pendingFrame = null;
     }
     const dt = lastFrame ? Math.min(0.24, (now - lastFrame) / 1000) : 0;
+    // Carry the fractional interval across display refreshes, skipping missed
+    // slots when the GPU stalls instead of trying to catch up in a burst.
+    nextFrame = nextFrame && now - nextFrame < interval ? nextFrame + interval : now + interval;
+    if (cut) nextFrame = now + interval;
     lastFrame = now;
     const step = state.paused || venueShots[state.cam] ? 0 : dt * state.speed;
     state.time = (state.time + step) % duration;

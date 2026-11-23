@@ -1,6 +1,5 @@
 import { distance, stopDistance } from "./race.js";
-import { laneX } from "./data.js";
-import { laneTravel } from "./course.js";
+import { racingDistance } from "./racing-line.js";
 import { raceStride, stanceStarts } from "./stride.js";
 
 // The skinned hoof takes this fraction of a stride to reach the turf after
@@ -20,8 +19,8 @@ const lookahead = 0.24;
 
 // Return impacts in (from, to]. Adjacent scheduling windows share an endpoint.
 export function hoofContacts(plan, number, from, to) {
-  const offset = laneX(number - 1), stop = laneTravel(stopDistance(plan), offset);
-  const at = raceTime => raceStride(number, laneTravel(distance(plan, raceTime), offset), stop);
+  const index = number - 1, stop = racingDistance(plan, index, stopDistance(plan));
+  const at = raceTime => raceStride(number, racingDistance(plan, index, distance(plan, raceTime)), stop);
   const first = at(from), last = at(to), contacts = [];
   if (last.count <= first.count) return contacts;
   for (let stride = Math.floor(first.count) - 1; stride <= Math.floor(last.count) + 1; stride++) {
@@ -148,8 +147,8 @@ export function raceAudio() {
       if (from >= to) return;
       const plan = race.plan[runner];
       for (const event of hoofContacts(plan, runner + 1, from, to)) {
-        const offset = laneX(runner);
-        const step = raceStride(runner + 1, laneTravel(distance(plan, event.time), offset), laneTravel(stopDistance(plan), offset));
+        const step = raceStride(runner + 1, racingDistance(plan, runner, distance(plan, event.time)),
+          racingDistance(plan, runner, stopDistance(plan)));
         const strength = step.weight * (1 - 0.55 * step.short) * (rate > 1 ? 0.72 : 1);
         strike(event, runner + 1, Math.max(now, outputNow + (event.time - t) / rate), strength);
       }
