@@ -14,6 +14,7 @@ const venueShots = {
 };
 
 const bankFrame = new THREE.Matrix4();
+export const mountedViewBounds = { height: 1.35, radius: 3.5 };
 export function placeRunnerFrame(frame, pt, lean) {
   // Shift the centre of mass inward in proportion to its height. The
   // support plane stays level even when both sides have a hoof down.
@@ -92,6 +93,8 @@ export async function startStage(canvas, state, refresh) {
     return frame;
   });
   const runnerPositions = actors.map(() => new THREE.Vector3());
+  const view = new THREE.Frustum(), viewProjection = new THREE.Matrix4();
+  const mountedBounds = new THREE.Sphere(new THREE.Vector3(), mountedViewBounds.radius);
   const field = actors.map(() => ({ x: 0, z: 0, angle: 0, lean: 0 }));
   // Projected contact patches keep the horses grounded without a second
   // scene-wide geometry pass on software WebGL.
@@ -314,6 +317,15 @@ export async function startStage(canvas, state, refresh) {
     camera.fov = fov / (state.zoom || 1);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    if (software) {
+      // The animated meshes have no fixed bind-pose bounds. Cull the whole
+      // mounted pair with room for an extended leg and the rider's lean.
+      view.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      for (const [i,p] of runnerPositions.entries()) {
+        mountedBounds.center.set(p.x, p.y + mountedViewBounds.height, p.z);
+        runnerFrames[i].visible = patches[i].visible = view.intersectsSphere(mountedBounds);
+      }
+    }
     sun.position.set(aim.x - 18, 36, aim.z + 20);
     sun.target.position.copy(aim);
     const marker = document.getElementById("tracking-mark");

@@ -9,7 +9,7 @@ import { newGame, start, distance, RUN_OUT_SECONDS, stopDistance } from "../src/
 import { bendEntry, bendExit, bendLean, coursePoint, laneTravel } from "../src/course.js";
 import { linePose, racingDistance } from "../src/racing-line.js";
 import { attachStartingStalls } from "../src/landscape.js";
-import { placeRunnerFrame } from "../src/stage.js";
+import { mountedViewBounds, placeRunnerFrame } from "../src/stage.js";
 import { loadAyanHorse, makeAyanHorse } from "../src/horse-ayan.js";
 
 // Geometry checks use real meshes, skeletons and animations. The headless
@@ -64,6 +64,31 @@ test("six physical starting stalls close on their lane centres and clear the hor
         assert.ok(a.min.z > 0.15 && a.max.z < 0.30);
       } else assert.ok(gap >= (t < 0.28 ? 1.20 : 1.58));
     }
+  }
+});
+
+test("software camera bounds enclose the mounted silhouette throughout a leaning stride", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const frame = new Group(), runner = makeAyanHorse(horses[2]);
+  frame.add(runner.group);
+  const vertex = new Vector3(), centre = new Vector3();
+  for (let i = 0; i < 20; i++) {
+    const lean = i % 2 ? 0.4 : -0.30;
+    placeRunnerFrame(frame,{ x: 14, z: 47, heading: i * 0.19 },lean);
+    runner.group.position.z = 0;
+    runner.seekDistance(40+i*0.38,true,1200,lean);
+    runner.group.position.z = -runner.noseLead;
+    frame.updateMatrixWorld(true);
+    runner.group.getWorldPosition(centre);
+    centre.y += mountedViewBounds.height;
+    runner.group.traverseVisible(mesh => {
+      if (!mesh.isMesh) return;
+      for (let j = 0; j < mesh.geometry.attributes.position.count; j++) {
+        mesh.getVertexPosition(j,vertex).applyMatrix4(mesh.matrixWorld);
+        assert.ok(vertex.distanceToSquared(centre) < mountedViewBounds.radius ** 2);
+      }
+    });
   }
 });
 
