@@ -26,15 +26,20 @@ test("whole-field perspective fits all six mounted silhouettes on desktop, portr
       for (const aspect of [0.46, 1.65, 2.03, 2.8]) {
         const frame = fieldCamera(laneX(0), laneX(5), Math.min(...centres), Math.max(...centres), aspect);
         const camera = new PerspectiveCamera(frame.fov, aspect, 0.08, 2300);
-        camera.position.set(frame.x - 0.8 * frame.radius, frame.y + 0.6 * frame.radius, frame.z);
+        camera.position.set(frame.eyeX, frame.eyeY, frame.eyeZ);
         camera.lookAt(frame.x, frame.y, frame.z);
         camera.updateMatrixWorld();
+        const range = camera.position.distanceTo(point.set(frame.x, frame.y, frame.z));
+        camera.near = range * 0.25;
+        camera.updateProjectionMatrix();
+        assert.ok(Math.exp(-((range * frame.fogDensity) ** 2)) > 0.88);
+        if (aspect < 1) assert.ok(frame.eyeZ < frame.z && frame.eyeX === frame.x);
         for (const [i, z] of centres.entries())
           for (const side of [-0.6, 0.6])
             for (const height of [0, 2.9])
               for (const end of [-1.95, 1.55]) {
                 point.set(laneX(i) + side, height, z + end).project(camera);
-                assert.ok(Math.abs(point.x) < 0.85 && Math.abs(point.y) < 0.54 && point.z < 1);
+                assert.ok(Math.abs(point.x) < 0.85 && Math.abs(point.y) < (aspect < 1 ? 0.63 : 0.54) && Math.abs(point.z) < 1);
               }
       }
     }

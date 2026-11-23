@@ -458,8 +458,9 @@ export function createLandscape() {
   const grass = grassTufts(), secondGrass = grass.clone();
   group.add(floor, mountains, grass, secondGrass, ovalTurf(), ...chunks.map(chunk => chunk.group));
   let setGates;
-  function update(playerZ = 0, raceSeconds = 0) {
+  function update(playerZ = 0, raceSeconds = 0, showBackdrop = true) {
     setGates?.(raceSeconds);
+    mountains.visible = showBackdrop;
     mountains.position.z = playerZ;
     mountains.scale.y = 0.20;
     for (let i = 0; i < chunks.length; i++) {

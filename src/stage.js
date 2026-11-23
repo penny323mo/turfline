@@ -186,7 +186,7 @@ export async function startStage(canvas, state, refresh) {
     focus.copy(actors[state.selected].group.position);
     const venue = venueShots[shot];
     const screenWidthBias = Math.max(1, 1.35 / camera.aspect);
-    let fov = 32;
+    let fov = 32, fogDensity = shot === "overview" ? 0.00045 : 0.0085;
     if (venue) {
       eye.fromArray(venue.eye);
       look.fromArray(venue.target);
@@ -207,8 +207,9 @@ export async function startStage(canvas, state, refresh) {
       }
       const frame = fieldCamera(minX, maxX, minZ, maxZ, camera.aspect);
       look.set(frame.x, frame.y, frame.z);
-      eye.set(frame.x - 0.8 * frame.radius, frame.y + 0.6 * frame.radius, frame.z);
+      eye.set(frame.eyeX, frame.eyeY, frame.eyeZ);
       fov = frame.fov;
+      fogDensity = frame.fogDensity;
     } else if (shot === "line") {
       eye.set(-17 * screenWidthBias, 8.2 * screenWidthBias, 1200);
       look.set(0, 1.2, 1200);
@@ -241,14 +242,18 @@ export async function startStage(canvas, state, refresh) {
       look.copy(focus).add(new THREE.Vector3(0.4, 1.28, -0.5));
       fov = 17.4;
     }
-    scene.fog.density = state.cam === "overview" ? 0.00045 : 0.0085;
-    land.update(venue ? venue.target[2] : z, race?.t ?? 0);
+    scene.fog.density = fogDensity;
+    land.update(venue ? venue.target[2] : z, race?.t ?? 0, shot !== "pack");
     const a = cut ? 1 : 1 - Math.exp(-15 * Math.max(dt, 1 / 60));
     camera.position.lerp(eye, a);
     aim.lerp(look, a);
     camera.lookAt(aim);
     // Keep the near-side timing cabinet out of the finish camera's sightline.
-    camera.near = shot === "line" ? Math.max(1, eye.distanceTo(look) - 9.8) : 0.08;
+    let near = 0.08;
+    if (shot === "line") near = Math.max(1, eye.distanceTo(look) - 9.8);
+    // Keep enough depth precision to separate the turf and its painted course.
+    if (shot === "pack") near = camera.position.distanceTo(aim) * 0.25;
+    camera.near = near;
     camera.fov = fov / (state.zoom || 1);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
