@@ -472,15 +472,27 @@
 }
 .countdown {
   position: absolute;
-  inset: 0;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 2;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 9px;
+  border-radius: 4px;
   pointer-events: none;
-  background: #10181044;
+  background: #172319ed;
   color: var(--green);
-  font: italic 700 clamp(70px, 9vw, 140px) var(--display);
-  text-shadow: 0 4px 50px #071207;
+  font: italic 700 clamp(23px, 3vw, 36px)/1.1 var(--display);
+}
+.countdown::before {
+  content: '開閘倒數';
+  font: 600 11px/1.2 sans-serif;
+  color: #eef2e8;
+}
+@media (max-width: 600px) {
+  .countdown { left: auto; right: 48px; transform: none; top: 8px; }
 }
 .fs-tools {
   display: none;

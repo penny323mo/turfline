@@ -84,3 +84,4 @@ export const venues = [
   { id: "finish", name: "終點柱與鏡架", en: "FINISH LINE" },
 ];
 export const duration = 76;
+export const laneX = (runner) => -6 + runner * 2;

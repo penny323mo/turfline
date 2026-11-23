@@ -9,7 +9,7 @@
 
 ## 賽馬場設施
 
-3DAssets.dev 的 [Racecourse and Parade Ring](https://3dassets.dev/packs/racecourse-and-parade-ring) 套件採用 [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)。以下 GLB 檔保留原始幾何。遊戲在載入時統一配色，並按場地比例組裝看台及跑欄。
+3DAssets.dev 的 [Racecourse and Parade Ring](https://3dassets.dev/packs/racecourse-and-parade-ring) 套件採用 [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)。以下 GLB 檔保留原始幾何。遊戲在載入時統一配色，並按場地比例組裝看台及跑欄。每個起步閘位嘅前門網架喺載入時沿中線分成兩扇，配上鉸位、檔號同開閘動畫。
 
 | 本機檔案 | 原件及下載來源 |
 | --- | --- |

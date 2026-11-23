@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
-import { horses, duration } from "./data.js";
+import { horses, duration, laneX } from "./data.js";
 
 const venueShots = {
   overview: { eye: [-355, 760, 600], target: [-60, 0, 600], fov: 55 },
-  gate: { eye: [-13, 5.0, 13], target: [-1, 1.45, -4.7], fov: 39 },
+  gate: { eye: [-13, 5.0, 13], target: [-1, 1.45, -1.4], fov: 39 },
   stand: { eye: [1, 8.4, 35], target: [29, 3.0, 10], fov: 39 },
   finish: { eye: [-17, 4.1, 1217], target: [5, 1.7, 1200], fov: 37 },
 };
@@ -127,7 +127,7 @@ export async function startStage(canvas, state, refresh) {
         g = actors[i].group;
       g.position.set(
         race
-          ? -6 + i * 2 + 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i)
+          ? laneX(i) + 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i)
           : spec.x + 0.1 * Math.sin(t * 0.38 + i),
         0,
         race
@@ -171,6 +171,12 @@ export async function startStage(canvas, state, refresh) {
           ),
         );
       look.copy(focus).add(new THREE.Vector3(0.2, 1.2, 0.38));
+      if (race && z < 18) {
+        const gateView = 1 - THREE.MathUtils.smoothstep(z, 2, 18);
+        eye.lerp(new THREE.Vector3(-10 * screenWidthBias, 3.7, 13 + z), gateView);
+        look.lerp(new THREE.Vector3(focus.x * 0.68, 1.5, z - 0.7), gateView);
+        fov += 8 * gateView;
+      }
     } else if (state.cam === "aerial") {
       eye
         .copy(focus)
@@ -183,7 +189,7 @@ export async function startStage(canvas, state, refresh) {
       fov = 17.4;
     }
     scene.fog.density = state.cam === "overview" ? 0.00045 : 0.0085;
-    land.update(venue ? venue.target[2] : z);
+    land.update(venue ? venue.target[2] : z, race?.t ?? 0);
     const a = cut ? 1 : 1 - Math.exp(-15 * Math.max(dt, 1 / 60));
     camera.position.lerp(eye, a);
     aim.lerp(look, a);

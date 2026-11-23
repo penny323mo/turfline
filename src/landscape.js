@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { laneX } from './data.js';
 
 const CHUNK = 120;
 const TAU = Math.PI * 2;
@@ -224,7 +225,7 @@ async function addOaks(chunks) {
 }
 
 const START_BEND = -30, END_BEND = 1230, TURN_CENTRE_X = 60;
-const FILES = ['rail', 'starting-stalls', 'starters-rostrum', 'winning-post', 'finish-mirror', 'grandstand-tier', 'grandstand-canopy', 'course-tractor'];
+const FILES = ['rail', 'starters-rostrum', 'winning-post', 'finish-mirror', 'grandstand-tier', 'grandstand-canopy', 'course-tractor'];
 const venuePalette = {
   charcoal: '#585f55', gravel: '#c6c2ae', steel: '#84948d', white: '#f0ecda',
   green: '#658773', red: '#bc6450', yellow: '#dfb257', timber: '#9d8162', glass: '#9eb5b4',
@@ -283,8 +284,7 @@ function ovalTurf() {
   return mesh;
 }
 
-async function loadVenueGeometry(name) {
-  const { scene } = await loadVenueFile(name), b = batch();
+function venueTriangles(scene, visit) {
   const a = new THREE.Vector3(), c = new THREE.Vector3(), d = new THREE.Vector3();
   scene.updateMatrixWorld();
   scene.traverse(obj => {
@@ -295,9 +295,86 @@ async function loadVenueGeometry(name) {
     function point(vector, index) {
       return vector.fromBufferAttribute(pos, idx ? idx.getX(index) : index).applyMatrix4(obj.matrixWorld).toArray();
     }
-    for (let i = 0; i < count; i += 3) b.tri(point(a, i), point(c, i + 1), point(d, i + 2), tone);
+    for (let i = 0; i < count; i += 3) visit(obj.name, point(a, i), point(c, i + 1), point(d, i + 2), tone);
   });
+}
+
+async function loadVenueGeometry(name) {
+  const { scene } = await loadVenueFile(name), b = batch();
+  venueTriangles(scene, (_, a, c, d, tone) => b.tri(a, c, d, tone));
   return b.mesh().geometry;
+}
+
+// Split the source grille along its centre and keep the original steel and
+// yellow faces on two independently hinged leaves.
+function clipGateFace(points, centre, side, target, tone) {
+  const polygon = [];
+  let a = points.at(-1);
+  for (const b of points) {
+    const ax = (a[0] - centre) * side, bx = (b[0] - centre) * side;
+    if (ax * bx < 0) {
+      const t = ax / (ax - bx);
+      polygon.push([centre, a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]);
+    }
+    if (bx >= 0) polygon.push(b);
+    a = b;
+  }
+  for (let i = 1; i < polygon.length - 1; i++) target.tri(polygon[0], polygon[i], polygon[i + 1], tone);
+}
+
+export function attachStartingStalls(group, scene) {
+  const fixed = batch(), stalls = new THREE.Group();
+  const width = 0.92, hingeZ = 1.44;
+  const bays = Array.from({ length: 6 }, (_, index) => ({
+    x: -2.32 + index * width, halves: [batch(), batch()],
+  }));
+  venueTriangles(scene, (name, a, b, c, tone) => {
+    const match = /^stall-(\d)/.exec(name);
+    if (!match) return fixed.tri(a, b, c, tone);
+    const bay = bays[Number(match[1]) - 1];
+    clipGateFace([a, b, c], bay.x, -1, bay.halves[0], tone);
+    clipGateFace([a, b, c], bay.x, 1, bay.halves[1], tone);
+  });
+  stalls.name = 'starting-stalls';
+  stalls.add(fixed.mesh());
+  const hinges = [];
+  bays.forEach((bay, index) => {
+    for (const [half, data] of bay.halves.entries()) {
+      const side = half === 0 ? -1 : 1, x = bay.x + side * 0.40;
+      const leaf = data.mesh();
+      leaf.name = 'gate-' + (6 - index) + (half === 0 ? '-left' : '-right');
+      leaf.geometry.translate(-x, 0, -hingeZ);
+      leaf.position.set(x, 0, hingeZ);
+      stalls.add(leaf);
+      hinges.push({ leaf, side });
+    }
+    const face = document.createElement('canvas');
+    face.width = 128; face.height = 96;
+    const ctx = face.getContext('2d');
+    ctx.fillStyle = '#1b493a'; ctx.fillRect(0, 0, 128, 96);
+    ctx.fillStyle = '#fff3cf'; ctx.font = 'bold 80px sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText(String(6 - index), 64, 78);
+    const map = new THREE.CanvasTexture(face);
+    map.colorSpace = THREE.SRGBColorSpace;
+    const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.42),
+      new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide }));
+    badge.position.set(bay.x, 2.65, hingeZ);
+    badge.scale.x = -1;
+    stalls.add(badge);
+  });
+  // Align each two-metre lane and lower the loaded floor to turf height.
+  stalls.scale.set(2 / width, 1.12, 1.16);
+  stalls.position.set(-laneX(bays.length - 1) - bays[0].x * stalls.scale.x,
+    -0.26 * stalls.scale.y, 0.24 - hingeZ * stalls.scale.z);
+  group.add(stalls);
+  let last = -1;
+  return (raceSeconds) => {
+    const progress = THREE.MathUtils.clamp(raceSeconds / 0.28, 0, 1);
+    if (progress === last) return;
+    last = progress;
+    const angle = Math.PI / 2 * (1 - (1 - progress) ** 3);
+    for (const { leaf, side } of hinges) leaf.rotation.y = side * angle;
+  };
 }
 
 async function addVenue(group) {
@@ -313,7 +390,6 @@ async function addVenue(group) {
     group.add(m);
     return m;
   }
-  place('starting-stalls', 1, -4.7, 0, 2.222, 1.12, 1.16);
   place('starters-rostrum', -12.5, -5.4, Math.PI / 2);
   place('winning-post', -10.4, 1200, -Math.PI / 2);
   place('finish-mirror', 10.4, 1200, -Math.PI / 2);
@@ -381,7 +457,9 @@ export function createLandscape() {
   const chunks = [0, 1, 2, 3, 4].map(courseChunk);
   const grass = grassTufts(), secondGrass = grass.clone();
   group.add(floor, mountains, grass, secondGrass, ovalTurf(), ...chunks.map(chunk => chunk.group));
-  function update(playerZ = 0) {
+  let setGates;
+  function update(playerZ = 0, raceSeconds = 0) {
+    setGates?.(raceSeconds);
     mountains.position.z = playerZ;
     mountains.scale.y = 0.20;
     for (let i = 0; i < chunks.length; i++) {
@@ -392,5 +470,6 @@ export function createLandscape() {
     secondGrass.position.z = 64 + 128 * Math.round((playerZ - 64) / 128);
   }
   update();
-  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group)]) };
+  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group),
+    loadVenueFile('starting-stalls').then(({ scene }) => { setGates = attachStartingStalls(group, scene); })]) };
 }
