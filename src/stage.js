@@ -123,6 +123,8 @@ export async function startStage(canvas, state, refresh) {
     aim = new THREE.Vector3(),
     focus = new THREE.Vector3(), cameraEye = new THREE.Vector3(), cameraAim = new THREE.Vector3();
   const cameraFrame = new THREE.Matrix4(), inverseFrame = new THREE.Matrix4();
+  const hoofMark = document.getElementById("hoof-mark"), solePoint = new THREE.Vector3();
+  const replayDeck = document.getElementById("replay-deck"), orderStrip = document.getElementById("order-strip");
   let cut = true,
     lastFrame = 0,
     lastUi = -1,
@@ -206,7 +208,7 @@ export async function startStage(canvas, state, refresh) {
       g.rotation.y = runner?.line ? 0 : moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
       // Sample the same stride from race time in live coverage and on replay.
       if (race)
-        actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean);
+        actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean, pt.curvature);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
       if (race) g.position.z = -actors[i].noseLead;
@@ -315,8 +317,28 @@ export async function startStage(canvas, state, refresh) {
     if (shot === "pack") near = camera.position.distanceTo(aim) * 0.25;
     camera.near = near;
     camera.fov = fov / (state.zoom || 1);
+    if (state.studyMode && canvasBox.contains(replayDeck)) {
+      const { width, height, top } = canvasBox.getBoundingClientRect();
+      const bottomInset = replayDeck.getBoundingClientRect().height + 4;
+      const topInset = Math.max(0, orderStrip.getBoundingClientRect().bottom - top) + 4;
+      const usableHeight = Math.max(height * 0.35, height - topInset - bottomInset);
+      const scale = Math.max(1, height / (usableHeight * screenWidthBias));
+      camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(scale * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
+      camera.setViewOffset(width, height, 0, (bottomInset - topInset) / 2, width, height);
+    } else if (camera.view?.enabled) camera.clearViewOffset();
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    if (hoofMark) {
+      const hoof = state.studyHoof;
+      hoofMark.hidden = hoof == null;
+      if (hoof != null) {
+        runnerFrames[state.selected].updateMatrixWorld(true);
+        actors[state.selected].hoofPosition(hoof,solePoint).project(camera);
+        hoofMark.hidden = Math.abs(solePoint.x) > 1 || Math.abs(solePoint.y) > 1 || Math.abs(solePoint.z) > 1;
+        hoofMark.style.left = (solePoint.x + 1) * 50 + "%";
+        hoofMark.style.top = (1 - solePoint.y) * 50 + "%";
+      }
+    }
     if (software) {
       // The animated meshes have no fixed bind-pose bounds. Cull the whole
       // mounted pair with room for an extended leg and the rider's lean.

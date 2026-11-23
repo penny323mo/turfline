@@ -224,3 +224,26 @@ test("settlement pays at the line while all camera clocks follow the smooth run-
   }
   assert.deepEqual(g, record);
 });
+
+test("hoof-by-hoof replay finds both neighbouring strikes of the selected runner at any clock position", () => {
+  const rng = seeded(58), game = newGame(rng);
+  start(game,0,rng);
+  settle(game,200000);
+  const wallet = JSON.stringify(game);
+  const playback = finishReplay(game.race,() => 0,"stride");
+  assert.equal(playback.from,-3);
+  for (let runner=0; runner<6; runner++) {
+    const first = playback.footsteps(runner,playback.from);
+    assert.ok(!first.previous && !first.current && first.next.time > 0);
+    const middle = playback.footsteps(runner,32);
+    assert.ok(middle.previous.time < 32 && middle.next.time > 32);
+    const exact = playback.footsteps(runner,middle.next.time);
+    assert.deepEqual(exact.current,middle.next);
+    assert.deepEqual(exact.previous,middle.previous);
+    assert.equal(exact.next.hoof,(exact.current.hoof+1)%4);
+    assert.deepEqual(playback.footsteps(runner,exact.next.time).previous,exact.current);
+    const last = playback.footsteps(runner,playback.to);
+    assert.ok(last.previous.time < playback.to && !last.next);
+  }
+  assert.equal(JSON.stringify(game),wallet);
+});

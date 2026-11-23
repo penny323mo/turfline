@@ -5,10 +5,10 @@ import { raceStride, stanceStarts } from "./stride.js";
 // The skinned hoof takes this fraction of a stride to reach the turf after
 // its leg enters stance. Use the first contact, including on a rolling hoof.
 const contactOffsets = [
-  [0.016, 0.006, -0.006, -0.016, -0.017],
-  [0.024, 0.008, -0.002, -0.013, -0.016],
-  [0.018, 0.014, -0.003, -0.005, 0.010],
-  [0.032, 0.009, 0.002, -0.010, -0.002],
+  [0.018, 0.008, -0.011, -0.017, -0.020],
+  [0.025, 0.011, -0.002, -0.008, -0.018],
+  [0.024, 0.015, 0.003, -0.008, 0.010],
+  [0.029, 0.014, 0.002, -0.013, -0.007],
 ];
 function contactDelay(hoof, short) {
   const row = contactOffsets[hoof], position = short * (row.length - 1);

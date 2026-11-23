@@ -279,3 +279,53 @@ test("all six shorten their steps at the break and return all four soles to turf
     after.forEach((p, i) => assert.ok(p.distanceTo(repeat[i]) < 0.00001));
   }
 });
+
+test("all six mounted runners keep each support on its patch of turf through the break, a bend and the pull-up", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  let seed = 58;
+  const rng = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  const game = newGame(rng);
+  start(game, 0, rng);
+  for (const [i,spec] of horses.entries()) {
+    const h = game.race.plan[i], runner = makeAyanHorse(spec), frame = new Group();
+    frame.add(runner.group);
+    const stop = racingDistance(h,i,stopDistance(h));
+    function sample(t) {
+      const d = distance(h,t), speed = (d - distance(h,t-0.01)) / 0.01;
+      const pt = linePose(h,i,d,speed);
+      placeRunnerFrame(frame,pt,pt.lean);
+      runner.group.position.z = 0;
+      runner.seekDistance(racingDistance(h,i,d),true,stop,pt.lean,pt.curvature);
+      runner.group.position.z = -runner.noseLead;
+      frame.updateMatrixWorld(true);
+      return [0,1,2,3].map(hoof => runner.hoofPosition(hoof,new Vector3()));
+    }
+    for (const [from,to] of [[0.4,3.5],[10,13],[28,32],[h.finish+2.5,h.finish+7.3]]) {
+      const contacts = [[],[],[],[]], drift = [[],[],[],[]];
+      for (let n=0; n<=(to-from)*240; n++) {
+        sample(from+n/240).forEach((v,hoof) => {
+          const points = contacts[hoof];
+          if (v.y < 0.018) points.push(v);
+          else if (points.length) {
+            if (points.length >= 5) {
+              const a = points[0], b = points.at(-1);
+              drift[hoof].push(Math.hypot(a.x-b.x,a.z-b.z));
+            }
+            points.length = 0;
+          }
+        });
+      }
+      for (const spans of drift) {
+        assert.ok(spans.length >= 3, 'too few full supports for horse '+spec.number+' at '+from);
+        spans.sort((a,b) => a-b);
+        assert.ok(spans[Math.floor(spans.length/2)] < 0.014, 'support slides on horse '+spec.number+' at '+from);
+      }
+    }
+    const target = sample(30.25);
+    for (const t of [30.25,0.9,h.finish+7.1,12,30.25]) {
+      const result = sample(t);
+      if (t === 30.25) result.forEach((point,j) => assert.ok(point.distanceTo(target[j]) < 0.00001));
+    }
+  }
+});

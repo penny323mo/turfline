@@ -37,7 +37,8 @@ export function linePose(runner, index, d, speed = 0) {
   const scale = Math.hypot(along, slope);
   const steering = (along * second - k * slope * slope) / scale;
   const intoBend = Math.tan(bendLean(d, speed, offset));
-  return { x: pt.x, z: pt.z, heading, offset, lean: Math.atan(intoBend - speed * speed * steering / 9.81) };
+  const curvature = (-k + steering / scale) / scale;
+  return { x: pt.x, z: pt.z, heading, offset, curvature, lean: Math.atan(intoBend - speed * speed * steering / 9.81) };
 }
 
 const lengths = new WeakMap();

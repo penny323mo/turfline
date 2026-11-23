@@ -213,6 +213,15 @@ try {
   await waitText(page, "#replay-play", "暫停");
   await page.locator("#full").click();
   assert(await page.locator("#stage #replay-exit").isVisible());
+  await page.locator("#replay-scope").selectOption("stride");
+  await waitText(page, "#phase", "步姿慢鏡");
+  await page.locator("#next-hoof").click();
+  const footTime = await page.locator("#replay-time").innerText();
+  await page.locator("#previous-hoof").click();
+  assert.notEqual(await page.locator("#replay-time").innerText(), footTime);
+  await page.locator("#next-hoof").click();
+  await waitText(page, "#replay-time", footTime);
+  await page.locator("#hoof-mark").waitFor({ state: "visible" });
   await page.locator("#replay-scope").selectOption("full");
   await waitText(page, "#phase", "全場重播");
   assert.equal(await page.locator("#replay-scrub").getAttribute("min"), "-3");

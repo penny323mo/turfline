@@ -850,6 +850,15 @@
 }
 .stage[data-shot="pack"] canvas, #race-map { cursor: crosshair; }
 .stage canvas[hidden], .stage[data-shot="radar"] #tracking-mark { display: none; }
+#hoof-mark {
+  position: absolute; transform: translate(-50%, -50%); width: 19px; height: 19px;
+  border: 2px solid #edff8b; border-radius: 50%; box-shadow: 0 0 0 1px #172516b3;
+  pointer-events: none;
+}
+.stage[data-shot="radar"] #hoof-mark { display: none; }
+@media (max-width: 380px) {
+  .replay-keys button, .replay-keys select { padding-inline: 5px; }
+}
 @media (max-width: 1120px) {
   .arcade .live-controls { flex-wrap: wrap; gap: 6px; }
   .arcade .camera-switch { flex: 1 1 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }

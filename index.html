@@ -93,6 +93,7 @@
               >TURFLINE TV
             </div>
             <span id="tracking-mark" hidden>01</span>
+            <span id="hoof-mark" hidden aria-hidden="true"></span>
             <div class="fs-tools">
               <label
                 >焦點<select
@@ -135,12 +136,14 @@
             <button class="start-btn" id="watch-replay" hidden>賽事重播　↺</button>
           </div>
           <div class="replay-deck" id="replay-deck" aria-label="賽事重播控制" hidden>
-            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="full">全場重播</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
+            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
             <input id="replay-scrub" type="range" step="0.01" aria-label="重播賽事時間" />
             <div class="replay-keys">
               <button type="button" id="replay-play">暫停</button>
               <select id="replay-rate" aria-label="重播速度"><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select>
               <button type="button" id="replay-line">頭馬壓線</button>
+              <button type="button" id="previous-hoof" aria-label="焦點馬上一蹄着地" hidden>上一蹄</button>
+              <button type="button" id="next-hoof" aria-label="焦點馬下一蹄着地" hidden>下一蹄</button>
               <button type="button" id="replay-exit">返回賽果</button>
             </div>
           </div>

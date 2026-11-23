@@ -76,6 +76,11 @@ const cameraState = {
   time: 0.8,
   paused: false,
   visible: true,
+  get studyMode() { return replay?.scope === "stride"; },
+  get studyHoof() {
+    if (replay?.scope !== "stride" || replay.playing) return null;
+    return replay.footsteps(this.selected).current?.hoof ?? null;
+  },
   speed: 1,
   get holdFrame() {
     return replay ? !replay.playing : game.race.phase === "open";
@@ -174,6 +179,8 @@ function showShot(shot) {
     : (cameraState.cam === "auto" ? "導播" : "CAM " + pad(i + 1)) + "　/　" + raceCameras[i].en;
 }
 function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
+  if (horse !== cameraState.selected && replay?.scope === "stride" && !replay.playing)
+    focusFootfall(horse,replay.position());
   const changed = horse !== cameraState.selected || cam !== cameraState.cam;
   cameraState.selected = horse;
   cameraState.cam = cam;
@@ -380,7 +387,7 @@ function display() {
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
   $("phase").textContent = replay
-    ? { finish: "終點重播", full: "全場重播", pullup: "過線收步" }[replay.scope]
+    ? { finish: "終點重播", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
     : opened
     ? "接受投注"
     : done
@@ -664,22 +671,41 @@ function renderReplayClock(t) {
   const labelTime = t < 0 ? "−" + time(-t) : time(t);
   $("replay-scrub").setAttribute("aria-valuetext", labelTime);
   $("replay-time").textContent = labelTime;
+  if (replay.scope === "stride") {
+    const {previous,current,next} = replay.footsteps(cameraState.selected,t);
+    $("previous-hoof").disabled = !previous;
+    $("next-hoof").disabled = !next;
+    const hoof = current && !replay.playing ? ["右後蹄","左後蹄","右前蹄","左前蹄"][current.hoof] : "";
+    const subject = hoof ? hoof + "着地" : "步姿慢鏡";
+    if ($("subject-label").textContent !== subject) $("subject-label").textContent = subject;
+  }
   const label = replay.playing ? "暫停" : t >= replay.to ? "再播" : "播放";
   if ($("replay-play").textContent !== label) {
     $("replay-play").textContent = label;
     stage?.cut();
   }
 }
+function focusFootfall(runner,t) {
+  const { current, previous, next } = replay.footsteps(runner,t);
+  const nearest = current ?? (!previous || (next && next.time-t < t-previous.time) ? next : previous);
+  replay.pauseAt(nearest?.time ?? t);
+}
 function playScope(scope, first = false) {
-  const rate = replay?.rate ?? 0.5;
+  const gait = scope === "stride", t = replay?.position() ?? 0;
+  const rate = gait ? 0.25 : replay?.rate ?? 0.5;
   replay = finishReplay(game.race, undefined, scope);
   replay.setRate(rate);
+  if (gait) focusFootfall(cameraState.selected,t);
+  $("previous-hoof").hidden = $("next-hoof").hidden = !gait;
+  $("replay-line").hidden = gait;
+  if (gait) $("subject-label").setAttribute("aria-live","polite");
+  else $("subject-label").removeAttribute("aria-live");
   $("replay-scope").value = scope;
   $("replay-scrub").min = replay.from;
   $("replay-scrub").max = replay.to;
   $("replay-rate").value = String(replay.rate);
   updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
-    first || cameraState.cam === "line" ? "track" : cameraState.cam);
+    first || (gait && !forceMap) || cameraState.cam === "line" ? "track" : cameraState.cam);
   stage?.cut();
   display();
 }
@@ -692,6 +718,7 @@ function beginReplay() {
 $("replay-scope").onchange = e => playScope(e.target.value);
 function leaveReplay() {
   replay = null;
+  $("subject-label").removeAttribute("aria-live");
   updateCamera(previousView.horse, previousView.cam);
   previousView = null;
   stage?.cut();
@@ -702,6 +729,12 @@ $("replay-play").onclick = () => {
   stage?.cut();
   tick();
 };
+for (const [button,direction] of [["previous-hoof","previous"],["next-hoof","next"]]) {
+  $(button).onclick = () => {
+    const event = replay.footsteps(cameraState.selected)[direction];
+    if (event) pauseReplayAt(event.time);
+  };
+}
 function pauseReplayAt(t) {
   replay.pauseAt(t);
   stage?.cut();
