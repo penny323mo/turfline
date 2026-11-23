@@ -120,13 +120,17 @@ export function raceAudio() {
         if (schedule) reset();
         schedule = { race: race.number, runner, replay, rate, t, now, until: t };
       }
-      const from = Math.max(t, schedule.until), to = Math.min(until, t + lookahead * rate);
-      if (from >= to) return;
       // The output clock corresponds to the frame being heard. An output
       // timestamp can be absent during startup or on a suspended device.
       const stamp = ctx.getOutputTimestamp?.();
       const outputNow = stamp?.performanceTime > 0
-        ? Math.min(now, stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000) : now;
+        ? Math.min(now, stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000)
+        : now - (ctx.outputLatency || ctx.baseLatency || 0);
+      // Events inside the device's existing output buffer can no longer be
+      // placed on time. Start at its far edge instead of stacking them at now.
+      const audibleStart = t + (now - outputNow) * rate;
+      const from = Math.max(audibleStart, schedule.until), to = Math.min(until, audibleStart + lookahead * rate);
+      if (from >= to) return;
       const plan = race.plan[runner];
       for (const event of hoofContacts(plan, runner + 1, from, to)) {
         const strength = launchWeight(distance(plan, event.time)) * (rate > 1 ? 0.72 : 1);

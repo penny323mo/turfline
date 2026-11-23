@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hoofContacts } from "../src/race-audio.js";
+import { hoofContacts, raceAudio } from "../src/race-audio.js";
 import { distance, newGame, start } from "../src/race.js";
 import { stanceStarts, strideCount } from "../src/stride.js";
 
@@ -25,4 +25,48 @@ test("four-beat sound follows each runner through the break, the finish and adjo
     assert.deepEqual(windows.map(e => [e.stride,e.hoof]), events.map(e => [e.stride,e.hoof]));
     windows.forEach((event, j) => assert.ok(Math.abs(event.time - events[j].time) < 0.0002));
   });
+});
+
+test("a long device output queue keeps four distinct hits and cancels pending hits on a paused replay", async t => {
+  const savedContext = globalThis.AudioContext, savedDocument = globalThis.document;
+  t.after(() => {
+    if (savedContext) globalThis.AudioContext = savedContext;
+    else delete globalThis.AudioContext;
+    if (savedDocument) globalThis.document = savedDocument;
+    else delete globalThis.document;
+  });
+  let ctx;
+  const hits = [];
+  globalThis.document = { hidden: false };
+  globalThis.AudioContext = class {
+    currentTime = 1;
+    sampleRate = 8000;
+    outputLatency = 0.32;
+    constructor() { ctx = this; }
+    async resume() { this.state = "running"; }
+    async suspend() { this.state = "suspended"; }
+    createBuffer() { return { getChannelData: () => new Float32Array(1120) }; }
+    createGain() {
+      return { gain: { setTargetAtTime() {} }, connect() {}, disconnect() {} };
+    }
+    createBufferSource() {
+      return { playbackRate: {}, connect: gain => gain, disconnect() {},
+        start(when) { this.when = when; hits.push(this); },
+        stop() { this.stopped = true; } };
+    }
+  };
+  const game = newGame(() => 0.42);
+  start(game, 0, () => 0.42);
+  const audio = raceAudio();
+  await audio.toggle();
+  for (let i = 0; i < 20; i++) {
+    ctx.currentTime = 1 + i / 10;
+    audio.step(game.race, 2, 30 + i / 10, 1, 65, true);
+  }
+  assert.ok(hits.length > 18);
+  const expected = hoofContacts(game.race.plan[2], 3, 30.32, 32.46);
+  assert.equal(hits.length, expected.length);
+  hits.forEach((hit, i) => assert.ok(Math.abs(hit.when + 0.32 + 29 - expected[i].time) < 0.0003));
+  audio.step(game.race, 2, 31.9, 0, 65, true);
+  assert.ok(hits.every(hit => hit.stopped));
 });
