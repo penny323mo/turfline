@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { laneX } from './data.js';
+import { coursePoint, raceOval, studioOval } from './course.js';
+import { LENGTH } from './race.js';
 
 const CHUNK = 120;
 const TAU = Math.PI * 2;
@@ -111,14 +113,16 @@ function cypress(b, x, z, h, tilt, rand) {
   b.shape(CONE, x + h * 0.026, h * 0.80, z, h * 0.146, h * 0.47, h * 0.14, green, 0, tilt + 0.4);
 }
 
-function courseChunk(index) {
+function courseChunk(index, onRaceCourse = false) {
   const rand = random(971 + index * 71), b = batch();
   const group = new THREE.Group();
   // Parallel exercise track, grassy verge and pale path sit outside the white rail.
-  b.box(-16.8, -0.03, 0, 8.9, 0.075, CHUNK, '#c8b996');
-  b.box(-22.0, 0.004, 0, 0.9, 0.045, CHUNK, '#aeaa85');
-  // A second rail silhouettes the outer training track.
-  b.box(-22.7, 0.94, 0, 0.09, 0.085, CHUNK, '#e8e6cc');
+  const section = onRaceCourse ? 6 : CHUNK;
+  for (let z = (section - CHUNK) / 2; z < CHUNK / 2; z += section) {
+    b.box(-16.8, -0.03, z, 8.9, 0.075, section, '#c8b996');
+    b.box(-22.0, 0.004, z, 0.9, 0.045, section, '#aeaa85');
+    b.box(-22.7, 0.94, z, 0.09, 0.085, section, '#e8e6cc');
+  }
   for (let z = -60; z < 60; z += 3) b.box(-22.7, 0.46, z, 0.1, 0.93, 0.1, '#d5dbc3');
   // One spectator stand and a tree avenue can be seen from the original paddock.
 
@@ -128,7 +132,8 @@ function courseChunk(index) {
     let x = -(28 + rand() * 26);
     if (i % 4 === 0) x = 22 + rand() * 34;
     if (index === 0 && x < 0 && x > -35 && Math.abs(z - 10) < 23) continue;
-    if (index === 2 && x < 0 && x > -35 && Math.abs(z + 37) < 23) continue;
+    if (onRaceCourse && x < 0 && x > -36 && Math.abs(index * CHUNK + z - 1193) < 26) continue;
+    if (!onRaceCourse && index === 2 && x < 0 && x > -35 && Math.abs(z + 37) < 23) continue;
     const h = 2.5 + rand() ** 1.3 * 6;
     if (i % 3 === 0) cypress(b, x, z, h, rand() * TAU, rand);
     else oakLocations.push({ x, z, h, rotation: rand() * TAU, width: 0.85 + rand() * 0.65, shade: rand() });
@@ -143,6 +148,22 @@ function courseChunk(index) {
     b.shape(BUSH, side * 11.75, 1.76, z, 0.22, 0.22, 0.22, '#eaddbc');
   }
   const architecture = b.mesh();
+  if (onRaceCourse) {
+    const centre = index * CHUNK, origin = coursePoint(centre);
+    group.position.set(-origin.x, 0, origin.z);
+    const geometry = architecture.geometry, p = geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const pt = coursePoint(centre + p.getZ(i), -p.getX(i));
+      p.setXYZ(i, origin.x - pt.x, p.getY(i), pt.z - origin.z);
+    }
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    for (const oak of oakLocations) {
+      const pt = coursePoint(centre + oak.z, -oak.x);
+      oak.x = origin.x - pt.x;
+      oak.z = pt.z - origin.z;
+    }
+  }
   architecture.receiveShadow = true;
   group.add(architecture);
   return { group, oakLocations };
@@ -224,7 +245,6 @@ async function addOaks(chunks) {
   });
 }
 
-const START_BEND = -30, END_BEND = 1230, TURN_CENTRE_X = 60;
 const FILES = ['rail', 'starters-rostrum', 'winning-post', 'finish-mirror', 'grandstand-tier', 'grandstand-canopy', 'course-tractor'];
 const venuePalette = {
   charcoal: '#585f55', gravel: '#c6c2ae', steel: '#84948d', white: '#f0ecda',
@@ -236,37 +256,37 @@ function loadVenueFile(name) {
   return new GLTFLoader().loadAsync(base + 'models/scenery-' + name + '.glb');
 }
 
-function ovalPoint(distance, radius) {
-  const straight = END_BEND - START_BEND, halfTurn = Math.PI * radius;
-  if (distance <= straight) return [TURN_CENTRE_X - radius, START_BEND + distance];
+function ovalPoint(distance, radius, oval) {
+  const straight = oval.far - oval.near, halfTurn = Math.PI * radius;
+  if (distance <= straight) return [oval.radius - radius, oval.near + distance];
   distance -= straight;
   if (distance < halfTurn) {
     const a = distance / radius;
-    return [TURN_CENTRE_X - radius * Math.cos(a), END_BEND + radius * Math.sin(a)];
+    return [oval.radius - radius * Math.cos(a), oval.far + radius * Math.sin(a)];
   }
   distance -= halfTurn;
-  if (distance <= straight) return [TURN_CENTRE_X + radius, END_BEND - distance];
+  if (distance <= straight) return [oval.radius + radius, oval.far - distance];
   const a = (distance - straight) / radius;
-  return [TURN_CENTRE_X + radius * Math.cos(a), START_BEND - radius * Math.sin(a)];
+  return [oval.radius + radius * Math.cos(a), oval.near - radius * Math.sin(a)];
 }
 
-function courseEdges(offset) {
-  const radius = TURN_CENTRE_X + offset, straight = END_BEND - START_BEND, arc = Math.PI * radius;
+function courseEdges(offset, oval) {
+  const radius = oval.radius + offset, straight = oval.far - oval.near, arc = Math.PI * radius;
   const points = [];
   let travelled = 0;
   for (const segment of [straight, arc, straight, arc]) {
     const count = Math.ceil(segment / 8.12);
-    for (let i = 0; i < count; i++) points.push(ovalPoint(travelled + segment * i / count, radius));
+    for (let i = 0; i < count; i++) points.push(ovalPoint(travelled + segment * i / count, radius, oval));
     travelled += segment;
   }
   return points;
 }
 
-function ovalTurf() {
-  const b = batch(), length = (END_BEND - START_BEND) * 2 + TAU * TURN_CENTRE_X;
+function ovalTurf(oval) {
+  const b = batch(), length = (oval.far - oval.near) * 2 + TAU * oval.radius;
   const points = [], count = Math.ceil(length / 6);
   for (let i = 0; i < count; i++) {
-    const d = i / count * length, a = ovalPoint(d, TURN_CENTRE_X), n = ovalPoint(d + 0.05, TURN_CENTRE_X);
+    const d = i / count * length, a = ovalPoint(d, oval.radius, oval), n = ovalPoint(d + 0.05, oval.radius, oval);
     const dx = n[0] - a[0], dz = n[1] - a[1], factor = 11 / Math.hypot(dx, dz);
     points.push([[a[0] - dz * factor, -0.01, a[1] + dx * factor], [a[0] + dz * factor, -0.01, a[1] - dx * factor]]);
   }
@@ -377,20 +397,20 @@ export function attachStartingStalls(group, scene) {
   };
 }
 
-async function addVenue(group) {
+async function addVenue(group, gateFrame, oval) {
   const pieces = await Promise.all(FILES.map(loadVenueGeometry));
   const models = Object.fromEntries(FILES.map((name, i) => [name, pieces[i]]));
-  function place(name, x, z, angle = 0, sx = 1, sy = sx, sz = sx) {
+  function place(name, x, z, angle = 0, sx = 1, sy = sx, sz = sx, frame = group) {
     const m = new THREE.Mesh(models[name], surface);
     m.name = name;
     m.position.set(x, 0, z);
     m.scale.set(sx, sy, sz);
     m.rotation.y = angle;
     m.receiveShadow = true;
-    group.add(m);
+    frame.add(m);
     return m;
   }
-  place('starters-rostrum', -12.5, -5.4, Math.PI / 2);
+  place('starters-rostrum', -12.5, -5.4, Math.PI / 2, 1, 1, 1, gateFrame);
   place('winning-post', -10.4, 1200, -Math.PI / 2);
   place('finish-mirror', 10.4, 1200, -Math.PI / 2);
   const finish = new THREE.Mesh(new THREE.PlaneGeometry(21, 0.14).rotateX(-Math.PI / 2),
@@ -414,25 +434,27 @@ async function addVenue(group) {
     map.colorSpace = THREE.SRGBColorSpace;
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1),
       new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide }));
-    sign.rotation.y = Math.PI / 2;
+    const marker = oval === raceOval ? coursePoint(LENGTH - remaining, 12.1) :
+      { x: 12.1, z: LENGTH - remaining, heading: 0 };
+    sign.rotation.y = Math.PI / 2 - marker.heading;
     sign.scale.x = -1;
-    sign.position.set(-12.1, 2.05, 1200 - remaining);
+    sign.position.set(-marker.x, 2.05, marker.z);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.95, 0.12), finish.material);
-    post.position.set(-12.1, 0.975, 1200 - remaining);
+    post.position.set(-marker.x, 0.975, marker.z);
     group.add(sign, post);
   }
-  place('course-tractor', -18.5, -17.0, -0.28);
-  const crowd = batch();
+  place('course-tractor', -18.5, -17.0, -0.28, 1, 1, 1, gateFrame);
   for (const centre of [10, 1193]) {
+    const frame = centre === 10 ? gateFrame : group, crowd = batch();
     grandstand(crowd, centre, random(1874));
+    frame.add(crowd.mesh());
     for (const section of [-18, -6, 6, 18]) {
-      place('grandstand-tier', -29, centre + section, -Math.PI / 2, 1, 0.77, 1);
-      place('grandstand-canopy', -29, centre + section, -Math.PI / 2, 0.985, 0.73, 0.98);
+      place('grandstand-tier', -29, centre + section, -Math.PI / 2, 1, 0.77, 1, frame);
+      place('grandstand-canopy', -29, centre + section, -Math.PI / 2, 0.985, 0.73, 0.98, frame);
     }
   }
-  group.add(crowd.mesh());
   for (const offset of [-11, 11]) {
-    const edge = courseEdges(offset), tr = new THREE.Object3D();
+    const edge = courseEdges(offset, oval), tr = new THREE.Object3D();
     // Subdivide the long rail into independently culled lengths.
     for (let first = 0; first < edge.length; first += 16) {
       const take = Math.min(16, edge.length - first);
@@ -452,25 +474,35 @@ async function addVenue(group) {
   }
 }
 
-export function createLandscape() {
+export function createLandscape(onRaceCourse = false) {
   const group = new THREE.Group(), floor = turf(), mountains = ridges();
-  const chunks = [0, 1, 2, 3, 4].map(courseChunk);
+  const oval = onRaceCourse ? raceOval : studioOval;
+  const chunks = Array.from({ length: onRaceCourse ? Math.ceil(LENGTH / CHUNK) + 1 : 5 },
+    (_, i) => courseChunk(i, onRaceCourse));
   const grass = grassTufts(), secondGrass = grass.clone();
-  group.add(floor, mountains, grass, secondGrass, ovalTurf(), ...chunks.map(chunk => chunk.group));
+  const gateFrame = new THREE.Group();
+  function align(object, d) {
+    const pt = onRaceCourse ? coursePoint(d) : { x: 0, z: d, heading: 0 };
+    object.position.set(-pt.x, 0, pt.z);
+    object.rotation.y = -pt.heading;
+  }
+  align(gateFrame, 0);
+  group.add(floor, mountains, grass, secondGrass, gateFrame, ovalTurf(oval), ...chunks.map(chunk => chunk.group));
   let setGates;
   function update(playerZ = 0, raceSeconds = 0, showBackdrop = true) {
     setGates?.(raceSeconds);
     mountains.visible = showBackdrop;
-    mountains.position.z = playerZ;
+    align(mountains, playerZ);
+    mountains.rotation.y = 0;
     mountains.scale.y = 0.20;
-    for (let i = 0; i < chunks.length; i++) {
+    for (let i = 0; !onRaceCourse && i < chunks.length; i++) {
       const base = i * CHUNK;
       chunks[i].group.position.z = base + CHUNK * chunks.length * Math.round((playerZ - base) / (CHUNK * chunks.length));
     }
-    grass.position.z = 128 * Math.round(playerZ / 128);
-    secondGrass.position.z = 64 + 128 * Math.round((playerZ - 64) / 128);
+    align(grass, 128 * Math.round(playerZ / 128));
+    align(secondGrass, 64 + 128 * Math.round((playerZ - 64) / 128));
   }
   update();
-  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group),
-    loadVenueFile('starting-stalls').then(({ scene }) => { setGates = attachStartingStalls(group, scene); })]) };
+  return { group, update, ready: Promise.all([grassReady, addOaks(chunks), addVenue(group, gateFrame, oval),
+    loadVenueFile('starting-stalls').then(({ scene }) => { setGates = attachStartingStalls(gateFrame, scene); })]) };
 }

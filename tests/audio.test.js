@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { hoofContacts, raceAudio } from "../src/race-audio.js";
 import { distance, newGame, start } from "../src/race.js";
 import { stanceStarts, strideCount } from "../src/stride.js";
+import { laneTravel } from "../src/course.js";
+import { laneX } from "../src/data.js";
 
 test("four-beat sound follows each runner through the break, the finish and adjoining audio windows", () => {
   const game = newGame(() => 0.47);
@@ -16,7 +18,7 @@ test("four-beat sound follows each runner through the break, the finish and adjo
     for (const [j, event] of events.entries()) {
       assert.ok(event.time > 0 && event.time <= horse.finish + 22 / 17);
       if (j) assert.equal(event.hoof, (events[j - 1].hoof + 1) % 4);
-      const phase = strideCount(number, distance(horse, event.time)) - event.stride;
+      const phase = strideCount(number, laneTravel(distance(horse, event.time), laneX(i))) - event.stride;
       assert.ok(Math.abs(phase - stanceStarts[event.hoof]) < 0.034);
     }
     const windows = [];

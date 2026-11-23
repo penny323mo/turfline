@@ -89,7 +89,7 @@ export function makeAyanHorse(spec) {
   horse.rotation.y = Math.PI / 2;
   horse.scale.setScalar(SCALE);
   horse.position.y = REST_GROUND * SCALE;
-  const { tack, waist, breeches } = makeRacingTack(spec);
+  const { tack, waist, upperBody, breeches } = makeRacingTack(spec);
   tack.scale.set(1.025, 1, 1.02);
   tack.position.set(0,0.044,-0.05);
   mount.add(tack);
@@ -118,11 +118,13 @@ export function makeAyanHorse(spec) {
       noseLead = Math.max(noseLead, contact.z * yawCos - contact.x * yawSin);
     }
     const {heave, pitch} = bodyMotion(phase);
-    const lift = weight * (0.052 - 0.68 * (heave + 0.155));
+    const a = phase * Math.PI * 2;
+    const lift = weight * (0.055 - 0.72 * (heave + 0.155) + 0.009 * Math.sin(a - 0.65));
     breeches.morphTargetInfluences[0] = lift / 0.12;
     waist.position.y = 1.78 + lift;
     waist.position.z = -0.10 - 0.30 * lift;
-    waist.rotation.x = weight * (0.26 - pitch + 0.075 * Math.sin(phase * Math.PI * 2 - 1.1));
+    waist.rotation.x = weight * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
+    upperBody.morphTargetInfluences[0] = weight * (0.5 + 0.5 * Math.sin(a - 0.62));
   }
   function pose(distance, weight) {
     travelled = distance;

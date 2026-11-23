@@ -1,6 +1,7 @@
 import * as esbuild from "esbuild";
 import { cp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { watch } from "node:fs";
+import { createServer, request } from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -55,13 +56,34 @@ async function html(meta) {
     await writeFile(path.join(output, page), source);
   }
 }
+
+// esbuild serves byte ranges but omits the advertisement Chromium uses to
+// enable scrubbing a directly opened MP4. Keep the same controls on localhost.
+async function serve(ctx) {
+  const host = "127.0.0.1";
+  const upstream = await ctx.serve({ host, port: 0, servedir: output });
+  const server = createServer((req, res) => {
+    const proxy = request({ host, port: upstream.port, path: req.url, method: req.method, headers: req.headers }, (source) => {
+      const headers = { ...source.headers };
+      if (headers["content-type"] === "video/mp4") headers["accept-ranges"] = "bytes";
+      res.writeHead(source.statusCode, headers);
+      source.on("error", () => res.destroy());
+      source.pipe(res);
+    });
+    proxy.on("error", () => res.destroy());
+    res.on("close", () => proxy.destroy());
+    req.pipe(proxy);
+  });
+  await new Promise((resolve, reject) => server.once("error", reject).listen(port, host, resolve));
+}
+
 if (preview) {
   const ctx = await esbuild.context({
     stdin: { contents: "", resolveDir: root },
     write: false,
     logLevel: "silent",
   });
-  await ctx.serve({ host: "127.0.0.1", port, servedir: output });
+  await serve(ctx);
   console.log("Turfline preview http://127.0.0.1:" + port + "/");
 } else {
   await rm(output, { recursive: true, force: true });
@@ -101,7 +123,7 @@ if (preview) {
         else console.error(e);
       }
     });
-    await ctx.serve({ host: "127.0.0.1", port, servedir: output });
+    await serve(ctx);
     console.log("Turfline dev http://127.0.0.1:" + port + "/");
   } else {
     const { metafile } = await esbuild.build(options);

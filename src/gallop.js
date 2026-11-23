@@ -84,6 +84,7 @@ export function makeGallop(source, scale, ground) {
   }
   const root = joint('spine005_64'),
     rootPositions = [];
+  const back = ['spine006_63', 'spine007_51', 'spine008_50', 'spine009_48'].map(joint);
   const neck = ['spine011_31', 'spine012_28', 'spine014_25', 'skull_6'].map(joint);
   const tail = ['spine004_5', 'spine003_4', 'spine002_3', 'spine001_2', 'spine_1'].map(joint);
   const body = rig.getObjectByName('Object_11'),
@@ -175,8 +176,15 @@ export function makeGallop(source, scale, ground) {
     root.bone.position.copy(root.bone.parent.worldToLocal(point));
     root.bone.position.toArray(rootPositions, 3 * i);
     rotateWorld(root, pitch);
-    const nod = Math.sin(a - 0.7);
-    [0.16 + 0.052 * nod, 0.12 + 0.046 * nod, 0.035 + 0.025 * nod, -0.1 - 0.04 * nod].forEach((d, j) =>
+    // The pelvis tucks under the body in the gathered phase. Transfer the
+    // smaller motion along the back before solving either pair of legs.
+    const gather = Math.cos(a + 0.34);
+    [0.085 * gather, -0.063 * Math.cos(a + 0.12),
+      -0.048 * Math.cos(a - 0.11), 0.029 * Math.cos(a - 0.36)].forEach((d, j) =>
+      rotateWorld(back[j], d, true),
+    );
+    [0.16 + 0.077 * Math.sin(a - 0.48), 0.12 + 0.052 * Math.sin(a - 0.80),
+      0.035 + 0.031 * Math.sin(a - 1.14), -0.1 - 0.066 * Math.sin(a - 0.86)].forEach((d, j) =>
       rotateWorld(neck[j], d, true),
     );
     [0.49, 0.36, 0.2, 0.12, 0.06].forEach((d, j) =>

@@ -1,4 +1,5 @@
 import { horses, cameras } from "./data.js";
+import { bendEntry, bendExit } from "./course.js";
 import { cameraShot, liveCameras, readView, saveView } from "./broadcast.js";
 import { icon } from "./icons.js";
 import {
@@ -12,6 +13,7 @@ import {
   start,
   changeSpeed,
   elapsed,
+  distance,
   snapshot,
   snapshotAt,
   settle,
@@ -80,7 +82,9 @@ const cameraState = {
   },
   courseFrame() {
     if (game.race.phase === "open") return null;
-    return replay ? snapshotAt(game.race, replay.position()) : snapshot(game.race);
+    const frame = replay ? snapshotAt(game.race, replay.position()) : snapshot(game.race);
+    frame.speeds = game.race.plan.map((runner, i) => (frame.ds[i] - distance(runner, frame.t - 0.05)) / 0.05);
+    return frame;
   },
 };
 document.querySelectorAll("[data-icon]").forEach((el) => {
@@ -496,7 +500,9 @@ function tick() {
     const order = r.settlement?.order ?? snap.order,
       k = order.join("-");
     if (live || replay) {
-      $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? format(snap.remaining) + " m" : "衝線";
+      const leader = snap.ds[snap.order[0]];
+      const section = leader < bendEntry ? "對面直路" : leader < bendExit ? "彎位" : "終點直路";
+      $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? section + "　" + format(snap.remaining) + " m" : "衝線";
       const rank = snap.order.indexOf(cameraState.selected) + 1;
       $("bug-rank").textContent = count > 0 ? "第 " + horses[cameraState.selected].number + " 檔" : "焦點馬 第 " + rank + " 位";
     }

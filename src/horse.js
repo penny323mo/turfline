@@ -32,6 +32,7 @@ const reinSegment = new THREE.CylinderGeometry(0.009, 0.009, 1, 5);
 // the same number of draw calls regardless of how their silks and boots are cut.
 function sculpt() {
   const parts = [];
+  let vertexCount = 0;
   function put(geometry, color, position, rotation = new THREE.Quaternion(), scale = [1, 1, 1]) {
     const matrix = new THREE.Matrix4().compose(vector(position), rotation, vector(scale));
     const shape = geometry.index ? geometry.toNonIndexed() : geometry;
@@ -39,6 +40,7 @@ function sculpt() {
     shape.applyMatrix4(matrix);
     shape.deleteAttribute('uv');
     const count = shape.getAttribute('position').count;
+    vertexCount += count;
     const c = new THREE.Color(color);
     const colors = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) c.toArray(colors, i * 3);
@@ -63,7 +65,7 @@ function sculpt() {
     mesh.receiveShadow = true;
     return mesh;
   }
-  return { joint, limb, put, finish };
+  return { joint, limb, put, finish, get vertexCount() { return vertexCount; } };
 }
 
 function numberPlate(number, color) {
@@ -89,6 +91,7 @@ export function makeRacingTack(spec) {
   const tack = new THREE.Group();
   const shape = sculpt();
   const jacket = sculpt();
+  const sleeves = [];
   const legs = sculpt();
   const accent = spec.color;
   const skin = ['#e1a47f', '#b77f5e', '#d69971'][((spec.number || 1) - 1) % 3];
@@ -153,6 +156,7 @@ export function makeRacingTack(spec) {
     const shoulder = [side*0.15,2.049,0.203];
     const elbow = [side*0.216,1.898,0.301];
     const hand = [side*0.139,1.876,0.536];
+    const sleeveStart = jacket.vertexCount;
     jacket.joint(shoulder,[0.069,0.068,0.078],accent);
     jacket.limb(shoulder, elbow, 0.065, 0.052, accent);
     jacket.limb([side*0.174,1.990,0.24],[side*0.184,1.966,0.257],0.067,0.065,white);
@@ -160,6 +164,7 @@ export function makeRacingTack(spec) {
     jacket.limb(elbow, hand, 0.05, 0.032, accent);
     jacket.limb([side*0.155,1.88,0.495], hand,0.037,0.033,white);
     jacket.joint(hand,[0.037,0.036,0.059],'#372d28');
+    sleeves.push([sleeveStart, jacket.vertexCount]);
   }
   // Two narrow stripes follow the helmet dome from nape to peak.
   for (const side of [-1,1]) {
@@ -171,6 +176,20 @@ export function makeRacingTack(spec) {
   waist.name = 'JockeyWaist';
   waist.position.set(0,1.78,-0.10);
   const upperBody = jacket.finish();
+  const upperPositions = upperBody.geometry.attributes.position;
+  const reach = new Float32Array(upperPositions.count * 3);
+  for (const [start, end] of sleeves) {
+    for (let i = start; i < end; i++) {
+      const z = upperPositions.getZ(i);
+      const elbow = THREE.MathUtils.smoothstep(z, 0.203, 0.301);
+      const hand = THREE.MathUtils.smoothstep(z, 0.301, 0.536);
+      reach[i * 3 + 1] = 0.022 * elbow - 0.058 * hand;
+      reach[i * 3 + 2] = 0.041 * elbow + 0.033 * hand;
+    }
+  }
+  upperBody.geometry.morphTargetsRelative = true;
+  upperBody.geometry.morphAttributes.position = [new THREE.BufferAttribute(reach, 3)];
+  upperBody.updateMorphTargets();
   upperBody.name = 'JockeyUpperBody';
   upperBody.position.copy(waist.position).multiplyScalar(-1);
   waist.add(upperBody);

@@ -34,10 +34,22 @@ export function cameraShot(mode, distance) {
 
 // Use the screen's long axis for the length of the field. Fit the full box in
 // perspective, including the nearest lane and space around the broadcast graphics.
-export function fieldCamera(minX, maxX, minZ, maxZ, aspect) {
-  const dx = (maxX - minX) / 2 + 0.65;
+export function fieldCamera(runners, aspect) {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const { x, z, angle, lean } of runners) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const shift = -1.45 * Math.tan(lean);
+    const width = 0.65 + Math.abs(shift);
+    const halfX = width * Math.abs(cos) + 2 * Math.abs(sin);
+    const halfZ = width * Math.abs(sin) + 2 * Math.abs(cos);
+    minX = Math.min(minX, x + shift * cos - halfX);
+    maxX = Math.max(maxX, x + shift * cos + halfX);
+    minZ = Math.min(minZ, z - shift * sin - halfZ);
+    maxZ = Math.max(maxZ, z - shift * sin + halfZ);
+  }
+  const dx = (maxX - minX) / 2;
   const dy = 1.55;
-  const dz = (maxZ - minZ) / 2 + 2;
+  const dz = (maxZ - minZ) / 2;
   const fov = 38, tangent = Math.tan(fov * Math.PI / 360);
   const portrait = aspect < 1;
   const backX = portrait ? 0 : -0.8;

@@ -1,14 +1,16 @@
 import { distance } from "./race.js";
+import { laneX } from "./data.js";
+import { laneTravel } from "./course.js";
 import { launchWeight, stanceStarts, strideCount } from "./stride.js";
 
 // The skinned hoof takes this fraction of a stride to reach the turf after
 // its leg enters stance. Use the first contact, including on a rolling hoof.
-const contactPhase = stanceStarts.map((phase, i) => phase + [0.019, 0.023, 0.010, 0.032][i]);
+const contactPhase = stanceStarts.map((phase, i) => phase + [0.016, 0.024, 0.018, 0.032][i]);
 const lookahead = 0.24;
 
 // Return impacts in (from, to]. Adjacent scheduling windows share an endpoint.
 export function hoofContacts(plan, number, from, to) {
-  const at = raceTime => strideCount(number, distance(plan, raceTime));
+  const at = raceTime => strideCount(number, laneTravel(distance(plan, raceTime), laneX(number - 1)));
   const first = at(from), last = at(to), contacts = [];
   if (last <= first) return contacts;
   for (let stride = Math.floor(first); stride <= Math.floor(last); stride++) {
