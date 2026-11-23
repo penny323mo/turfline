@@ -1,4 +1,5 @@
 import { coursePoint, LENGTH } from "./course.js";
+import { paradePoint, ringCentre, ringRadius } from "./parade.js";
 import { horses } from "./data.js";
 import { linePose } from "./racing-line.js";
 
@@ -68,7 +69,7 @@ export function createRadar(canvas, onPick) {
     const ds = labels.map(p => Math.hypot(e.clientX - rect.left - p.x, e.clientY - rect.top - p.y));
     if (Math.min(...ds) <= Math.max(18, radius + 5)) onPick(ds.indexOf(Math.min(...ds)));
   });
-  return function draw(plan, distances, selected) {
+  return function draw(plan, distances, selected, paradeTime = null) {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -92,31 +93,50 @@ export function createRadar(canvas, onPick) {
       if (bounds.height) bottom = Math.min(bottom,bounds.top-rect.top-radius-4);
     }
     bottom = Math.max(bottom,top+1);
-    const { first, last, project } = mapView(ds, w, h, top, bottom);
-    const at = (d, side) => project(coursePoint(d, side));
     const drawPath = (points, stroke, width, fill) => {
       ctx.beginPath();
       points.forEach((p, i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
       if (fill) { ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
       if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.stroke(); }
     };
-    // Carry the rails past the frame edge even when all six are at the gate.
-    const from = Math.floor((first - 120) / 10) * 10, to = last + 120;
-    const inner = [], outer = [];
-    for (let d = from; d <= to; d += 5) {
-      inner.push(at(d,-11)); outer.push(at(d,11));
+    function courseProjection() {
+      const { first, last, project } = mapView(ds, w, h, top, bottom);
+      const at = (d, side) => project(coursePoint(d, side));
+      // Carry the rails past the frame edge even when all six are at the gate.
+      const from = Math.floor((first - 120) / 10) * 10, to = last + 120;
+      const inner = [], outer = [];
+      for (let d = from; d <= to; d += 5) {
+        inner.push(at(d,-11)); outer.push(at(d,11));
+      }
+      drawPath([...inner,...outer.slice().reverse()],null,0,"#507858");
+      for (let i = 0; i + 1 < inner.length; i++) if (Math.floor((from + i*5) / 15) % 2)
+        drawPath([inner[i],inner[i+1],outer[i+1],outer[i]],null,0,"#4a7154");
+      drawPath(inner, "#e1ebd4", 2);
+      drawPath(outer, "#bdcdb7", 1.5);
+      for (const d of [0, LENGTH]) if (d >= from && d <= to) {
+        ctx.setLineDash([4, 3]);
+        drawPath([at(d,-11), at(d,11)], "#f2f0cf", 2);
+        ctx.setLineDash([]);
+      }
+      return (i, d) => project(linePose(plan?.[i] ?? {}, i, d));
     }
-    drawPath([...inner,...outer.slice().reverse()],null,0,"#507858");
-    for (let i = 0; i + 1 < inner.length; i++) if (Math.floor((from + i*5) / 15) % 2)
-      drawPath([inner[i],inner[i+1],outer[i+1],outer[i]],null,0,"#4a7154");
-    drawPath(inner, "#e1ebd4", 2);
-    drawPath(outer, "#bdcdb7", 1.5);
-    for (const d of [0, LENGTH]) if (d >= from && d <= to) {
-      ctx.setLineDash([4, 3]);
-      drawPath([at(d,-11), at(d,11)], "#f2f0cf", 2);
-      ctx.setLineDash([]);
+    function paradeProjection() {
+      const y = (top + bottom) / 2, r = Math.min(w * 0.37, (bottom-top) * 0.43);
+      for (const [size, color] of [[1.18,"#c4b08e"],[0.84,"#477253"]]) {
+        ctx.beginPath();
+        ctx.arc(w/2,y,r*size,0,2*Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = "#dedfc9";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      return (i) => {
+        const p = paradePoint(i,paradeTime);
+        return { x: w/2 + (p.x-ringCentre.x)*r/ringRadius, y: y-(p.z-ringCentre.z)*r/ringRadius };
+      };
     }
-    const runnerPoint = (i, d) => project(linePose(plan?.[i] ?? {}, i, d));
+    const runnerPoint = paradeTime === null ? courseProjection() : paradeProjection();
     const dots = ds.map((d,i) => runnerPoint(i,d));
     labels = spreadLabels(dots, radius, w, top, bottom);
     for (const [i,d] of ds.entries()) {

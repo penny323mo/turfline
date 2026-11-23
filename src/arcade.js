@@ -82,9 +82,8 @@ const cameraState = {
     return replay.footsteps(this.selected).current?.hoof ?? null;
   },
   speed: 1,
-  get holdFrame() {
-    return replay ? !replay.playing : game.race.phase === "open";
-  },
+  get parade() { return game.race.phase === "open"; },
+  get paradeTime() { return Date.now() / 1000; },
   get staticPose() {
     return replay ? !replay.playing : game.race.phase === "settled" && elapsed(game.race) >= runOutEnd(game.race);
   },
@@ -394,7 +393,7 @@ function display() {
       ? "賽事完成"
       : "賽事進行中";
   $("live-status").textContent = replay ? "REPLAY" : opened ? "PADDOCK" : done ? "RESULT" : "LIVE";
-  $("subject-label").textContent = replay ? "RACE REPLAY" : opened ? "PADDOCK FEED" : "TRACKING";
+  $("subject-label").textContent = replay ? "RACE REPLAY" : opened ? "亮相圈" : "TRACKING";
   $("refill").hidden = !(opened && game.balance < 10 && !r.tickets.length);
   $("field-tag").textContent = opened
     ? "6 匹出賽"
@@ -879,7 +878,7 @@ $("history-button").onclick = () =>
       : '<p class="empty-ticket">第一場完賽後，呢度會記錄名次、注項同派彩。</p>',
   );
 function drawRadar(s = snapshotIfRunning()) {
-  if (!mapCanvas.hidden) paintMap(game.race.plan, s?.ds, cameraState.selected);
+  if (!mapCanvas.hidden) paintMap(game.race.plan, s?.ds, cameraState.selected, cameraState.parade ? cameraState.paradeTime : null);
 }
 function snapshotIfRunning() {
   return replay ? snapshotAt(game.race, replay.position()) : game.race.plan ? snapshot(game.race) : null;

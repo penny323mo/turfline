@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { AnimationMixer, Box3, Group, Matrix4, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
-import { strideLength } from "../src/stride.js";
+import { walkStride, walkSpeed, walkBeats, walkSupport, paradePoint } from "../src/parade.js";
+import { strideCount, strideLength } from "../src/stride.js";
 import { prepareHorseDetail } from "../src/horse-detail.js";
 import { hoofContacts } from "../src/race-audio.js";
 import { newGame, start, distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
@@ -326,16 +327,23 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
     return [...points, ...[0,35,64,78,297,332,361,375].map(i => skinPoint(reins,i)),
       group.getObjectByName("JockeyWaist").getWorldPosition(new Vector3())];
   }
-  for (let i=0; i<73; i++) {
-    const t = clip.duration * ((i * 37) % 73) / 73;
-    runner.seek(t,true,16);
-    playback.setTime(t);
-    runner.group.updateMatrixWorld(true);
-    baked.scene.updateMatrixWorld(true);
-    const actual = samples(runner.group), exported = samples(baked.scene);
-    actual.forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002));
-    assert.ok(Math.abs(runner.group.getObjectByName("JockeyLegs").morphTargetInfluences[0]
-      - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
+  const walkClip = baked.animations.find(a => a.name === "ParadeWalk");
+  assert.ok(Math.abs(walkClip.duration - walkStride/walkSpeed) < 0.00001);
+  for (const gait of [clip, walkClip]) {
+    playback.stopAllAction();
+    playback.clipAction(gait).reset().play();
+    for (let i=0; i<73; i++) {
+      const t = gait.duration * ((i * 37) % 73) / 73;
+      if (gait === walkClip) runner.walk(t*walkSpeed);
+      else runner.seek(t,true,16);
+      playback.setTime(t);
+      runner.group.updateMatrixWorld(true);
+      baked.scene.updateMatrixWorld(true);
+      const actual = samples(runner.group), exported = samples(baked.scene);
+      actual.forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002));
+      assert.ok(Math.abs(runner.group.getObjectByName("JockeyLegs").morphTargetInfluences[0]
+        - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
+    }
   }
   const plan = { finish: 68, early: 0.008, surge: 0.006 }, lane = laneX(0);
   for (const [name, start] of [["GateBreak", 0], ["PullUp", plan.finish]]) {
@@ -455,5 +463,49 @@ test("all six mounted runners keep each support on its patch of turf through the
       const result = sample(t);
       if (t === 30.25) result.forEach((point,j) => assert.ok(point.distanceTo(target[j]) < 0.00001));
     }
+  }
+});
+
+test("the walking field takes four separate beats, plants each sole around the ring and cuts cleanly to the gate", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64,"+bytes.toString("base64"));
+  assert.deepEqual(walkBeats,[0,0.5,0.25,0.75]);
+  for (const [i,spec] of horses.entries()) {
+    const frame = new Group(), actor = makeAyanHorse(spec);
+    frame.add(actor.group);
+    const feet = () => walkBeats.map((_,j) => actor.hoofPosition(j,new Vector3()));
+    let previous, grounded = 4;
+    const slipping = [], raised = [0,0,0,0];
+    for (let n=0; n<=140; n++) {
+      const p = paradePoint(i,n/100);
+      placeRunnerFrame(frame,p,0);
+      actor.walk(p.metres);
+      frame.updateMatrixWorld(true);
+      const soles = feet();
+      grounded = Math.min(grounded,soles.filter(p => p.y < 0.018).length);
+      soles.forEach((foot,j) => {
+        raised[j] = Math.max(raised[j],foot.y);
+        const phase = (p.metres/walkStride + strideCount(spec.number,0) - walkBeats[j] + 1) % 1;
+        if (phase > 0.02 && phase < walkSupport-0.02 && previous) {
+          assert.ok(foot.y < 0.010);
+          slipping.push(Math.hypot(foot.x-previous[j].x,foot.z-previous[j].z)*100);
+        }
+      });
+      previous = soles;
+    }
+    assert.ok(grounded >= 2 && raised.every(h => h > 0.12));
+    slipping.sort((a,b) => a-b);
+    assert.ok(slipping[Math.floor(slipping.length*0.95)] < 0.015);
+    actor.waitAt(-2.4);
+    frame.updateMatrixWorld(true);
+    const standing = feet();
+    const ear = actor.group.getObjectByName("earL_8"), turned = ear.quaternion.clone();
+    actor.waitAt(-1.6);
+    frame.updateMatrixWorld(true);
+    assert.ok(turned.angleTo(ear.quaternion) > 0.012);
+    feet().forEach((p,j) => assert.ok(p.distanceTo(standing[j]) < 0.0001));
+    actor.seekDistance(0,false,1200);
+    frame.updateMatrixWorld(true);
+    feet().forEach((p,j) => assert.ok(p.distanceTo(standing[j]) < 0.0001));
   }
 });

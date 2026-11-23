@@ -29,6 +29,7 @@ try {
     const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
     const { loadAyanHorse, makeAyanHorse } = await import("/src/horse-ayan.js");
     const { horses, laneX } = await import("/src/data.js");
+    const { walkSpeed, walkStride } = await import("/src/parade.js");
     const { strideLength } = await import("/src/stride.js");
     const { distance, stopDistance, RUN_OUT_SECONDS } = await import("/src/race.js");
     const { laneTravel } = await import("/src/course.js");
@@ -106,6 +107,7 @@ try {
     const sampleRace = t => actor.seekDistance(laneTravel(distance(plan, t), offset), t > 0, halt);
     const period = strideLength(1) / 16;
     const clips = [
+      bake("ParadeWalk", walkStride/walkSpeed, 180, t => actor.walk(t*walkSpeed)),
       bake("Gallop", period, 360, t => actor.seek(t === period ? 0 : t, true, 16)),
       bake("GateBreak", 2.5, 2400, sampleRace),
       bake("PullUp", RUN_OUT_SECONDS, RUN_OUT_SECONDS * 960, t => sampleRace(plan.finish + t)),
@@ -119,7 +121,7 @@ try {
         title: "Crimson Comet — mounted racehorse", horseAuthor: "Ayan",
         horseSource: "https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318",
         horseLicense: "https://creativecommons.org/licenses/by/4.0/",
-        adaptation: "Turfline racing saddle, twin reins, articulated jockey, colours, gallop, gate break and pull-up. Metres, positive Z forward.",
+        adaptation: "Turfline racing saddle, twin reins, articulated jockey, colours, four-beat parade walk, gallop, gate break and pull-up. Metres, positive Z forward.",
       };
     } }));
     const bytes = new Uint8Array(await exporter.parseAsync(model, { binary: true, animations: clips }));
@@ -130,7 +132,7 @@ try {
   const dest = path.join(root, "public/models/horse-ayan-mounted.glb"), temp = dest + "." + process.pid + ".tmp";
   await writeFile(temp, Buffer.from(data, "base64"));
   await rename(temp, dest);
-  console.log("Exported Gallop, GateBreak and PullUp to public/models/horse-ayan-mounted.glb");
+  console.log("Exported ParadeWalk, Gallop, GateBreak and PullUp to public/models/horse-ayan-mounted.glb");
 } finally {
   await browser.close();
 }

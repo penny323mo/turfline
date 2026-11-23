@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { makeRacingTack } from './horse.js';
-import { bodyMotion, limbs, makeGallop, muzzleVertices, soleVertices } from './gallop.js';
+import { bodyMotion, limbs, makeGallop, makeWalk, muzzleVertices, soleVertices } from './gallop.js';
 import { raceStride, strideCount, strideLength } from './stride.js';
 import { fitRacingReins } from './racing-reins.js';
+import { walkStride } from './parade.js';
 import { hoofPlant } from './hoof-plant.js';
 
 const SCALE = 0.444;
@@ -25,7 +26,7 @@ export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', docum
       rest.setTime(0);
       const length = strideLength(1);
       const clips = collections.map(w => makeGallop(gltf.scene, SCALE, REST_GROUND, w, length));
-      asset = { scene: gltf.scene, stride: clips[0], clips, byLength: new Map([[length, clips]]) };
+      asset = { walk: makeWalk(gltf.scene, SCALE, REST_GROUND), scene: gltf.scene, stride: clips[0], clips, byLength: new Map([[length, clips]]) };
       return asset;
     }).catch(error => {
       assetPromise = undefined;
@@ -73,6 +74,7 @@ export function makeAyanHorse(spec) {
   if (!asset.byLength.has(length)) asset.byLength.set(length,
     collections.map(w => makeGallop(asset.scene, SCALE, REST_GROUND, w, length)));
   const strides = asset.byLength.get(length).map(clip => mixer.clipAction(clip));
+  const walkAction = mixer.clipAction(asset.walk);
   mixer.update(0);
   horse.updateMatrixWorld(true);
   const body = horse.getObjectByName('Object_11');
@@ -100,11 +102,19 @@ export function makeAyanHorse(spec) {
   const restPoint = new THREE.Vector3();
   const restNose = Math.max(...muzzleVertices.map(v =>
     body.getVertexPosition(v, restPoint).applyMatrix4(body.matrixWorld).z));
+  const gateJoints = ['spine011_31','spine014_25','earR_14','earL_8'].map(name => {
+    const bone = horse.getObjectByName(name);
+    const inv = bone.getWorldQuaternion(new THREE.Quaternion()).invert();
+    return {bone, rest: bone.quaternion.clone(), axis: new THREE.Vector3(1,0,0).applyQuaternion(inv),
+      swivel: new THREE.Vector3(0,1,0).applyQuaternion(inv)};
+  });
+  let waiting = false;
+  const turn = new THREE.Quaternion();
   const plant = hoofPlant(horse, body, mount, spec.number, restNose);
   let travelled = 0;
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
   let noseLead = 0;
-  function placeRider(phase, weight, short) {
+  function placeRider(phase, weight, short, walking) {
     // SkinnedMesh refreshes its bind inverse in updateMatrixWorld. Start each
     // solve from the same mount origin so scrubbing also works between renders.
     mount.position.y = 0;
@@ -125,15 +135,19 @@ export function makeAyanHorse(spec) {
     }
     const {heave, pitch, shoulderRoll} = bodyMotion(phase);
     const a = phase * Math.PI * 2;
-    const lift = weight * (1 - 0.58 * short) * (0.055 - 0.72 * (heave + 0.155) + 0.009 * Math.sin(a - 0.65));
+    const lift = walking ? 0.009 + 0.007 * Math.sin(2*a-0.6) : weight * (1 - 0.58 * short) * (0.055 - 0.72 * (heave + 0.155) + 0.009 * Math.sin(a - 0.65));
     breeches.morphTargetInfluences[0] = lift / 0.12;
     waist.position.y = 1.78 + lift;
     waist.position.z = -0.10 - 0.30 * lift;
-    waist.rotation.x = weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
-    waist.rotation.z = -0.6 * shoulderRoll * weight * (1 - 0.64 * short);
+    waist.rotation.x = walking ? -0.19 + 0.027 * Math.sin(2*a-0.84) : weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
+    waist.rotation.z = walking ? 0.018 * Math.sin(a-0.3) : -0.6 * shoulderRoll * weight * (1 - 0.64 * short);
   }
-  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0) {
+  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0, walking = false) {
     travelled = distance;
+    if (waiting) {
+      for (const joint of gateJoints) joint.bone.quaternion.copy(joint.rest);
+      waiting = false;
+    }
     plant.restore();
     const phase = THREE.MathUtils.euclideanModulo(count, 1);
     // Interpolate adjacent IK solutions. Blending the two extremes lifts the
@@ -144,17 +158,36 @@ export function makeAyanHorse(spec) {
       if (action.weight > 0) action.play();
       action.enabled = action.weight > 0;
     }
+    if (walking) walkAction.play();
+    walkAction.enabled = walking;
     mixer.setTime(phase);
-    placeRider(phase, weight, short);
+    placeRider(phase, weight, short, walking);
     // The boots stay in the irons as the shoulders turn into the running line.
     waist.rotation.z += lean * 0.24;
     waist.rotation.y = -lean * 0.39;
-    followMouth(weight);
+    followMouth(walking ? 0.8 : weight, false, walking);
   }
   function seekDistance(distance, running, stop, lean = 0, curvature = 0) {
     const step = raceStride(spec.number, distance, stop);
     pose(distance, running ? step.weight : 0, step.count, step.short, lean);
     if (running) plant.apply(distance, stop, step, noseLead, curvature);
+  }
+  function waitAt(seconds) {
+    if (!waiting) pose(0,0);
+    const strength = THREE.MathUtils.smoothstep(-seconds,0,0.9);
+    const beat = seconds*2.6 + spec.number*1.41;
+    gateJoints.forEach(({bone,rest,axis,swivel},i) => {
+      const ear = i >= 2;
+      const pitch = (ear ? 0.12 : 0.024) * Math.sin(beat-0.61*i);
+      const yaw = (ear ? 0.30 : 0.010) * Math.sin(beat*(ear ? 1.41 : 0.77)+i);
+      bone.quaternion.copy(rest).multiply(turn.setFromAxisAngle(axis,pitch*strength))
+        .multiply(turn.setFromAxisAngle(swivel,yaw*strength));
+    });
+    waiting = true;
+    followMouth(0);
+  }
+  function walk(metres) {
+    pose(metres, 0, metres / walkStride + strideCount(spec.number, 0), 0, 0, true);
   }
   function seek(time, running = false, speed = 0) {
     pose(running ? time * speed : 0, running ? 1 : 0);
@@ -166,5 +199,5 @@ export function makeAyanHorse(spec) {
   function hoofPosition(hoof, target) {
     return body.getVertexPosition(limbs[hoof].sole, target).applyMatrix4(body.matrixWorld);
   }
-  return { group, update, seek, seekDistance, hoofPosition, get noseLead() { return noseLead; } };
+  return { group, update, walk, waitAt, restNose, seek, seekDistance, hoofPosition, get noseLead() { return noseLead; } };
 }

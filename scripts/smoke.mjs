@@ -77,6 +77,13 @@ try {
     const info = gl.getExtension("WEBGL_debug_renderer_info");
     return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
   }));
+  await waitText(page, "#subject-label", "亮相圈");
+  await page.locator('[data-cam="radar"]').click();
+  assert(await page.locator("#race-map").isVisible());
+  await page.selectOption(".quick-focus","2");
+  await waitText(page, "#hero-bib", "03");
+  await page.locator('[data-cam="track"]').click();
+  await page.selectOption(".quick-focus","0");
   await waitText(page, "#balance", "1,000");
   await page.locator("#stake").fill("1010");
   assert(await page.locator("#confirm").isDisabled());
@@ -115,6 +122,7 @@ try {
   console.log("Eight tickets posted across both tabs.");
   await page.locator("#start").click();
   await waitText(peer, "#phase", "賽事進行中");
+  await waitText(page, "#subject-label", "TRACKING");
   assert(await peer.locator("#bet-form").isHidden());
   assert.equal(await peer.locator("[data-cancel]").count(), 0);
   await page.locator("#speed").click();

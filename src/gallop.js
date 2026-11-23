@@ -9,6 +9,7 @@ import {
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
 import { shortStrideRatio, stanceStarts, strideMetres } from './stride.js';
+import { walkBeats, walkingFoot, walkStride, walkSupport } from './parade.js';
 export { strideLength } from './stride.js';
 
 const turn = Math.PI * 2;
@@ -96,6 +97,14 @@ const angle = (dz, dy) => Math.atan2(dz, -dy);
 // Bake a cyclic clip once on a reference rig. The game samples the resulting
 // ordinary animation tracks, including when replaying or seeking backwards.
 export function makeGallop(source, scale, ground, collection = 0, stride = strideMetres) {
+  return bakeStride(source, scale, ground, collection, stride, false);
+}
+
+export function makeWalk(source, scale, ground) {
+  return bakeStride(source, scale, ground, 0, walkStride, true);
+}
+
+function bakeStride(source, scale, ground, collection, stride, walking) {
   const rig = clone(source);
   rig.rotation.y = Math.PI / 2;
   rig.scale.setScalar(scale);
@@ -120,6 +129,8 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
   const back = ['spine006_63', 'spine007_51', 'spine008_50', 'spine009_48'].map(joint);
   const neck = ['spine011_31', 'spine012_28', 'spine014_25', 'skull_6'].map(joint);
   const tail = ['spine004_5', 'spine003_4', 'spine002_3', 'spine001_2', 'spine_1'].map(joint);
+  const mane = ['hair_base05_33','hair_base04_30','hair_base03_27','hair_base02_24','hair_base01_19'].map(joint);
+  const ears = ['earR_14','earL_8'].map(joint);
   const body = rig.getObjectByName('Object_11'),
     muzzle = new Vector3();
   function nose() {
@@ -140,10 +151,10 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     });
     const toe = joints.at(-1).position;
     const contact = body.getVertexPosition(sole, new Vector3()).applyMatrix4(body.matrixWorld);
-    return { joints, segments, front, beat, sole, soleX: contact.x, soleZ: contact.z,
+    return { joints, segments, front, beat, sole, shoulderRest: joints[0].bone.position.clone(), shoulderKeys: [], soleX: contact.x, soleZ: contact.z,
       toeZ: contact.z - toe.z, toeY: -toe.y, soles: [] };
   }
-  const legs = limbs.map(({names, front, sole}, i) => leg(names, front, stanceStarts[i], sole));
+  const legs = limbs.map(({names, front, sole}, i) => leg(names, front, (walking ? walkBeats : stanceStarts)[i], sole));
 
   const q = new Quaternion(),
     bank = new Quaternion(),
@@ -169,16 +180,18 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
   function swing(leg, phase, noseOffset, heightOffset = 0, lengthOffset = 0) {
     const { joints, segments, front } = leg;
     const cycle = MathUtils.euclideanModulo(phase - leg.beat, 1);
-    const support = supportFraction(collection);
+    const support = walking ? walkSupport : supportFraction(collection);
     const u = cycle < support ? cycle * stance / support :
       stance + (cycle - support) * (1 - stance) / (1 - support);
-    const path = hoofPath(u, front);
-    path.z *= stride / strideMetres * MathUtils.lerp(1, shortStrideRatio, collection) * support / stance;
-    if (front) path.z -= 0.15 * collection;
-    path.y *= 1 - 0.62 * collection;
+    const path = walking ? walkingFoot(cycle, front, leg.soleX, leg.soleZ) : hoofPath(u, front);
+    if (!walking) {
+      path.z *= stride / strideMetres * MathUtils.lerp(1, shortStrideRatio, collection) * support / stance;
+      if (front) path.z -= 0.15 * collection;
+      path.y *= 1 - 0.62 * collection;
+    }
     const fold = u < stance ? 0 : Math.sin((Math.PI * (u - stance)) / (1 - stance)) ** 2;
     const load = u < stance ? Math.sin((Math.PI * u) / stance) ** 2 : 0;
-    const roll = (0.76 * Math.exp(-((u - 0.31) ** 2) / 0.011) - 0.3 * fold) * (1 - 0.4 * collection);
+    const roll = walking ? 0.34 * fold : (0.76 * Math.exp(-((u - 0.31) ** 2) / 0.011) - 0.3 * fold) * (1 - 0.4 * collection);
     const soleZ = leg.soleZ + path.z + noseOffset;
     const tipY = path.y + heightOffset - (leg.toeY * Math.cos(roll) - leg.toeZ * Math.sin(roll));
     const tipZ = soleZ + lengthOffset - (leg.toeY * Math.sin(roll) + leg.toeZ * Math.cos(roll));
@@ -187,7 +200,9 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     let y = tipY,
       z = tipZ;
     const cannon = Math.atan2(path.z, 1.35) + (front ? -1.46 : 1.05) * fold * (1 - 0.45 * collection);
-    const distal = front ? [cannon, 0.27 + 0.55 * load - 0.78 * fold] : [cannon];
+    const walkingCannon = segments[2].restAngle + Math.atan2(path.z, 1.25) + (front ? -0.72 : 0.52) * fold;
+    const distal = walking ? (front ? [walkingCannon, segments[3].restAngle + 0.18 * load - 0.40 * fold] : [walkingCannon])
+      : front ? [cannon, 0.27 + 0.55 * load - 0.78 * fold] : [cannon];
     for (let i = 0; i < distal.length; i++) {
       const length = segments[i + 2].length,
         a = distal[i];
@@ -215,7 +230,7 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     const recovery = u < stance ? 0 : (u - stance) / (1 - stance);
     const clearance = (front ? 0.033 : 0.052) * fold * (1 - 0.56 * collection) *
       (1 + 0.22 * Math.cos(Math.PI * recovery));
-    return { x: leg.soleX + Math.sign(leg.soleX) * clearance, y: path.y, z: soleZ };
+    return { x: (path.x ?? leg.soleX) + Math.sign(leg.soleX) * clearance * (walking ? 0.4 : 1), y: path.y, z: soleZ };
   }
 
   const times = [],
@@ -224,7 +239,10 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
   for (let i = 0; i <= frames; i++) {
     const phase = (i % frames) / frames,
       a = turn * phase;
-    const motion = bodyMotion(phase);
+    const motion = walking ? {
+      heave: -0.123 + 0.014 * Math.cos(2*a - 0.48), pitch: 0.026 * Math.sin(2*a),
+      sway: 0.022 * Math.sin(a), roll: -0.027 * Math.sin(a), shoulderRoll: 0.024 * Math.sin(a - 0.8),
+    } : bodyMotion(phase);
     const heave = MathUtils.lerp(motion.heave, -0.19 + (motion.heave + 0.155) * 0.45, collection);
     const pitch = motion.pitch * (1 - 0.52 * collection);
     times.push(i / frames);
@@ -237,7 +255,7 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     rotateWorld(root, pitch, false, motion.roll * balance);
     // The pelvis tucks under the body in the gathered phase. Transfer the
     // smaller motion along the back before solving either pair of legs.
-    const flexion = 1 - 0.48 * collection;
+    const flexion = walking ? 0.23 : 1 - 0.48 * collection;
     [0.085 * Math.cos(a + 0.34), -0.063 * Math.cos(a + 0.12),
       -0.048 * Math.cos(a - 0.11), 0.029 * Math.cos(a - 0.36)].forEach((d, j) =>
       rotateWorld(back[j], flexion * d, true, (motion.shoulderRoll - motion.roll) * balance / back.length),
@@ -246,19 +264,41 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     // base of the neck, and the shorter gate and run-out steps carry less swing.
     const foreLoad = Math.sin(a - turn * stanceStarts[3]);
     const nod = 1 - 0.64 * collection;
-    [0.16 + nod * (0.077 * Math.sin(a - 0.48) + 0.019 * foreLoad), 0.12 + nod * 0.052 * Math.sin(a - 0.80),
-      0.035 + nod * 0.031 * Math.sin(a - 1.14), -0.1 - nod * 0.066 * Math.sin(a - 0.94)].forEach((d, j) =>
+    const neckAngles = walking ? [0.10 + 0.051*Math.sin(2*a-0.4), 0.075 + 0.034*Math.sin(2*a-0.72),
+      0.024*Math.sin(2*a-0.95), -0.052-0.035*Math.sin(2*a-0.91)] : [0.16 + nod * (0.077 * Math.sin(a - 0.48) + 0.019 * foreLoad), 0.12 + nod * 0.052 * Math.sin(a - 0.80),
+      0.035 + nod * 0.031 * Math.sin(a - 1.14), -0.1 - nod * 0.066 * Math.sin(a - 0.94)];
+    neckAngles.forEach((d, j) =>
       rotateWorld(neck[j], d * (1 - 0.24 * collection), true),
     );
     [0.49, 0.36, 0.2, 0.12, 0.06].forEach((d, j) =>
-      rotateWorld(tail[j], d * (1 - 0.42 * collection) + balance * 0.058 * Math.sin(a - 0.5 * j), true, 0,
+      rotateWorld(tail[j], d * (walking ? 0.27 : 1 - 0.42 * collection) + balance * 0.058 * Math.sin(a - 0.5 * j), true, 0,
         balance * (0.017 + 0.012 * j) * Math.sin(a - 0.55 * j)),
     );
+    // The crest and ears follow the poll with a delay after each impact.
+    mane.forEach((joint, j) => rotateWorld(joint,
+      (walking ? 0.10 : 0.27) * Math.sin((walking ? 2 : 1)*a - 0.31*j - 0.76), true, 0,
+      (walking ? 0.035 : 0.11) * Math.sin(a - 0.29*j)));
+    ears.forEach((joint, j) => rotateWorld(joint,
+      (walking ? 0.08 : 0.14) * Math.sin(a - 0.5*j - 1.0), true, 0,
+      0.065 * Math.sin(a + 1.9*j)));
     rig.updateMatrixWorld(true);
     // Race distance is measured at the moving nose. Compensate here so the
     // stance foot stays planted while the head nods.
-    const muzzleOffset = nose() - restNose;
+    const muzzleOffset = walking ? 0 : nose() - restNose;
     for (const limb of legs) {
+      if (limb.front) {
+        // The scapula glides on the rib cage as this foreleg reaches and
+        // takes weight. Move the socket first, then solve down to the sole.
+        const shoulder = limb.joints[0].bone;
+        const beat = turn * (phase - limb.beat);
+        point.copy(limb.shoulderRest);
+        shoulder.parent.localToWorld(point);
+        point.y += (walking ? 0.023 : 0.038) * Math.cos(beat - 0.80);
+        point.z += (walking ? 0.037 : 0.057) * Math.cos(beat + 0.42) * (1-0.42*collection);
+        shoulder.position.copy(shoulder.parent.worldToLocal(point));
+        shoulder.position.toArray(limb.shoulderKeys, 3*i);
+        shoulder.updateWorldMatrix(false,true);
+      }
       const target = swing(limb, phase, muzzleOffset);
       // The weighted skin can move relative to the toe joint during flexion.
       // Fit the sole itself while the IK is being baked.
@@ -288,7 +328,9 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     for (const s of states.values()) s.bone.quaternion.toArray(s.keys, 4 * i);
   }
   const tracks = [new VectorKeyframeTrack(root.bone.name + '.position', times, rootPositions)];
+  for (const limb of legs.filter(leg => leg.front))
+    tracks.push(new VectorKeyframeTrack(limb.joints[0].bone.name + '.position', times, limb.shoulderKeys));
   for (const [name, s] of states)
     tracks.push(new QuaternionKeyframeTrack(name + '.quaternion', times, s.keys));
-  return new AnimationClip(collection ? 'CollectedStride' + collection : 'Gallop', 1, tracks);
+  return new AnimationClip(walking ? 'ParadeWalk' : collection ? 'CollectedStride' + collection : 'Gallop', 1, tracks);
 }

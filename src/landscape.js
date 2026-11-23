@@ -481,11 +481,24 @@ async function addVenue(group, gateFrame, oval) {
   }
 }
 
-export function createLandscape(onRaceCourse = false, software = false) {
+export function createLandscape(onRaceCourse = false, software = false, paradeGroup = null) {
   const group = new THREE.Group(), floor = turf(), mountains = ridges();
   const oval = onRaceCourse ? raceOval : studioOval;
   const chunks = Array.from({ length: onRaceCourse ? Math.round(raceOval.far / CHUNK) + 1 : 5 },
     (_, i) => courseChunk(i, onRaceCourse));
+  const treeGroups = [...chunks];
+  if (paradeGroup) {
+    const oakLocations = [];
+    const rand = random(4316);
+    for (let i=0; i<18; i++) {
+      const a = (i+0.2*rand())*TAU/18;
+      if (Math.abs(Math.sin(a)) < 0.38 && Math.cos(a) < 0) continue;
+      const r = 24+3*rand();
+      oakLocations.push({ x: r*Math.sin(a), z: r*Math.cos(a), h: 3.2+1.6*rand(),
+        width: 0.85+0.2*rand(), rotation: TAU*rand(), shade: rand() });
+    }
+    treeGroups.push({group: paradeGroup, oakLocations});
+  }
   const grass = grassTufts(software), secondGrass = grass.clone();
   const gateFrame = new THREE.Group();
   function align(object, d) {
@@ -497,10 +510,11 @@ export function createLandscape(onRaceCourse = false, software = false) {
   const track = ovalTurf(oval);
   group.add(floor, mountains, grass, secondGrass, gateFrame, track, ...chunks.map(chunk => chunk.group));
   let setGates;
-  function update(playerZ = 0, raceSeconds = 0, showBackdrop = true) {
+  function update(playerZ = 0, raceSeconds = 0, showBackdrop = true, backdropCentre = null) {
     setGates?.(raceSeconds);
     mountains.visible = showBackdrop;
-    align(mountains, playerZ);
+    if (backdropCentre) mountains.position.set(-backdropCentre.x,0,backdropCentre.z);
+    else align(mountains, playerZ);
     mountains.rotation.y = 0;
     mountains.scale.y = 0.20;
     for (let i = 0; !onRaceCourse && i < chunks.length; i++) {
@@ -513,6 +527,6 @@ export function createLandscape(onRaceCourse = false, software = false) {
   update();
   return { group, update,
     prepareVisibility: () => courseVisibility(group,[grass,secondGrass],new Set([floor,track,...mountains.children])),
-    ready: Promise.all([grassReady, addOaks(chunks), addVenue(group, gateFrame, oval),
+    ready: Promise.all([grassReady, addOaks(treeGroups), addVenue(group, gateFrame, oval),
     loadVenueFile('starting-stalls').then(({ scene }) => { setGates = attachStartingStalls(gateFrame, scene); })]) };
 }

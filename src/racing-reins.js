@@ -85,7 +85,7 @@ export function fitRacingReins(mount,body,rider) {
   const grip = new THREE.Vector3(), goal = new THREE.Vector3(), mouth = new THREE.Vector3();
   const tangent = new THREE.Vector3(), normal = new THREE.Vector3(), across = new THREE.Vector3();
   const arcs = Array.from({length: stations},(_,i) => Math.sin(Math.PI*i/(stations-1)));
-  function update(weight,fit = false) {
+  function update(weight,fit = false,walking = false) {
     mount.updateMatrixWorld(true);
     invMount.copy(mount.matrixWorld).invert();
     jacket.multiplyMatrices(invMount,rider.mesh.matrixWorld);
@@ -117,6 +117,7 @@ export function fitRacingReins(mount,body,rider) {
       if (fit) bindOffset.subVectors(grip,mouth);
       goal.copy(mouth).add(bindOffset).sub(grip);
       grip.x += 0.35*weight*goal.x;
+      if (walking) grip.y -= 0.13;
       grip.y += weight*(0.24*goal.y+0.015);
       grip.z += 0.55*weight*goal.z;
       grip.x = arm.side*Math.max(arm.side*grip.x,arm.side*outsideAt(guide,grip.z)+0.018);

@@ -6,6 +6,9 @@ import { cameraShot, fieldCamera, tracksideSide } from "./broadcast.js";
 import { bendLean, coursePoint } from "./course.js";
 import { linePose, racingDistance } from "./racing-line.js";
 
+import { paradePoint, ringCentre } from "./parade.js";
+import { makeParadeRing } from "./parade-ring.js";
+
 const venueShots = {
   overview: { eye: [-355, 760, 600], target: [-60, 0, 600], fov: 55 },
   gate: { eye: [-13, 5.0, 13], target: [-1, 1.45, -1.4], fov: 39 },
@@ -52,9 +55,11 @@ export async function startStage(canvas, state, refresh) {
   scene.fog = new THREE.FogExp2("#c6d5cc", 0.0085);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.08, 2300);
   const onRaceCourse = Boolean(state.courseFrame);
-  const land = createLandscape(onRaceCourse,software);
+  const ring = onRaceCourse ? makeParadeRing() : null;
+  const land = createLandscape(onRaceCourse,software,ring);
   land.group.scale.x = -1;
   scene.add(land.group);
+  if (ring) scene.add(ring);
   const hemi = new THREE.HemisphereLight(0xe8f3ff, 0xcdbe95, 1.35);
   const sun = new THREE.DirectionalLight(0xfff0d6, 2.48);
   sun.castShadow = true;
@@ -183,10 +188,15 @@ export async function startStage(canvas, state, refresh) {
       if (runner !== undefined) state.onPick(runner);
     });
   }
-  let lastTrackSide;
+  let lastTrackSide, lastParade;
   function place(dt) {
     const t = state.time;
     const race = state.courseFrame?.();
+    const parade = !!state.parade;
+    const paradeTime = parade ? state.paradeTime : 0;
+    if (ring) ring.visible = parade;
+    if (parade !== lastParade) cut = true;
+    lastParade = parade;
     const z = race ? race.ds[state.selected] : 10 + t * (1190 / duration);
     const shot = cameraShot(state.cam, race ? z : 0);
     if (shot !== lastShot) {
@@ -204,7 +214,7 @@ export async function startStage(canvas, state, refresh) {
       const lane = runner ? laneX(i) : spec.x;
       const moving = race ? THREE.MathUtils.smoothstep(race.speeds[i], 0, 3) : 1;
       const sway = race ? moving * 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i) : 0.1 * Math.sin(t * 0.38 + i);
-      const pt = runner?.line ? linePose(runner, i, d, race.speeds[i]) :
+      const pt = parade ? paradePoint(i, paradeTime) : runner?.line ? linePose(runner, i, d, race.speeds[i]) :
         onRaceCourse ? coursePoint(d, lane + sway) : { x: lane + sway, z: d, heading: 0 };
       const frame = runnerFrames[i];
       const lean = pt.lean ?? (onRaceCourse ? bendLean(d, race ? race.speeds[i] : 15.7, lane) : 0);
@@ -212,13 +222,15 @@ export async function startStage(canvas, state, refresh) {
       field[i].lean = lean;
       placeRunnerFrame(frame, pt, lean);
       g.position.set(0, 0, 0);
-      g.rotation.y = runner?.line ? 0 : moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
+      g.rotation.y = parade || runner?.line ? 0 : moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
       // Sample the same stride from race time in live coverage and on replay.
-      if (race)
+      if (parade) actors[i].walk(pt.metres);
+      else if (race && race.t < 0) actors[i].waitAt(race.t);
+      else if (race)
         actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean, pt.curvature);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
-      if (race) g.position.z = -actors[i].noseLead;
+      if (race) g.position.z = -(race.t < 0 ? actors[i].restNose : actors[i].noseLead);
       frame.localToWorld(runnerPositions[i].copy(g.position));
       if (software) {
         patches[i].position.copy(runnerPositions[i]);
@@ -227,7 +239,7 @@ export async function startStage(canvas, state, refresh) {
       }
     }
     const cameraDistance = shot === "pack" && race ? (Math.min(...race.ds) + Math.max(...race.ds)) / 2 : z;
-    const axis = onRaceCourse ? coursePoint(cameraDistance) : { x: 0, z: cameraDistance, heading: 0 };
+    const axis = parade ? (shot === "pack" ? ringCentre : paradePoint(state.selected,paradeTime)) : onRaceCourse ? coursePoint(cameraDistance) : { x: 0, z: cameraDistance, heading: 0 };
     cameraFrame.makeRotationY(axis.heading).setPosition(axis.x, 0, axis.z);
     inverseFrame.copy(cameraFrame).invert();
     focus.copy(runnerPositions[state.selected]).applyMatrix4(inverseFrame);
@@ -265,6 +277,7 @@ export async function startStage(canvas, state, refresh) {
       lastTrackSide = side;
       const cameraWidth = 5.95 * screenWidthBias;
       let height = Math.max(1.78, 7.7 / Math.max(1.6, 11 - side * focus.x)) * screenWidthBias;
+      if (parade) height = 2.95 * screenWidthBias;
       if (race?.plan[state.selected].line && z > 18) {
         for (const [i,p] of runnerPositions.entries()) {
           if (i === state.selected) continue;
@@ -317,7 +330,7 @@ export async function startStage(canvas, state, refresh) {
       fov = 17.4;
     }
     scene.fog.density = fogDensity;
-    land.update(venue ? venue.target[2] : z, race?.t ?? 0, shot !== "pack");
+    land.update(parade ? ringCentre.z : venue ? venue.target[2] : z, race?.t ?? 0, shot !== "pack", parade ? ringCentre : null);
     const a = cut ? 1 : 1 - Math.exp(-15 * Math.max(dt, 1 / 60));
     cameraEye.lerp(eye, a);
     cameraAim.lerp(look, a);
@@ -412,9 +425,9 @@ export async function startStage(canvas, state, refresh) {
     const still = state.staticPose;
     if (wasStatic !== still) cut = true;
     wasStatic = still;
-    if (!cut && (state.paused || still || venueShots[state.cam] || (software && state.holdFrame))) return;
+    if (!cut && (state.paused || still || venueShots[state.cam])) return;
     const focused = document.hasFocus();
-    const fps = software ? (focused ? 24 : 10) : (focused ? 60 : 30);
+    const fps = software ? (state.parade ? (focused ? 20 : 5) : (focused ? 24 : 10)) : (focused ? 60 : 30);
     const interval = 1000 / fps;
     if (!cut && now + 0.8 < nextFrame) return;
     // A foreground software renderer can prepare the next frame while the
