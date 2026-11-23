@@ -807,3 +807,46 @@
   .stage.replaying:fullscreen .fs-tools, .stage.replaying.expanded .fs-tools { bottom: 110px; }
   .stage.replaying:fullscreen .lower-third, .stage.replaying.expanded .lower-third { bottom: 155px; }
 }
+
+.order-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 12px;
+  color: #d9e2d1;
+  background: #1b231b;
+  border-bottom: 1px solid #374333;
+}
+#order-kind { font-size: 11px; white-space: nowrap; color: #c1cfb7; }
+#order-runners { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); flex: 1; gap: 3px; }
+#order-runners button {
+  min-height: 34px;
+  display: flex; justify-content: center; align-items: center; gap: 6px;
+  border: 1px solid transparent; border-radius: 4px;
+  font: 650 14px/1 var(--display); font-variant-numeric: tabular-nums;
+}
+#order-runners button[aria-pressed="true"] { border-color: var(--green); background: #303b27; }
+#order-runners button:hover { background: #313a2d; }
+#order-runners .order-place { color: #b6c3ae; font-size: 11px; }
+#order-runners b { color: #101610; background: var(--silk); border-radius: 2px; padding: 3px 4px; }
+.stage:is(:fullscreen, .expanded) .order-strip {
+  position: absolute; z-index: 2; top: 14px; left: 50%; transform: translateX(-50%);
+  width: min(43%, 550px); background: #152015e8; border: 1px solid #ffffff35; border-radius: 5px;
+}
+.stage[data-shot="pack"] canvas { cursor: crosshair; }
+@media (max-width: 1120px) {
+  .arcade .live-controls { flex-wrap: wrap; gap: 6px; }
+  .arcade .camera-switch { flex: 1 1 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .arcade .camera-switch button { justify-content: center; min-height: 35px; }
+  .arcade .camera-switch[hidden] + .quick-focus { margin-left: 0; }
+}
+@media (max-width: 720px) {
+  .order-strip { gap: 4px; padding: 2px 6px; }
+  #order-runners button { gap: 3px; min-height: 38px; }
+  #order-runners { gap: 1px; }
+  .stage:is(:fullscreen, .expanded) .order-strip { top: 66px; width: min(94%, 440px); }
+}
+@media (max-width: 450px) {
+  .arcade .camera-switch button { font-size: 11px; min-height: 40px; padding-inline: 2px; }
+  .arcade .live-controls .quick-focus, .arcade .live-controls .sounds { min-height: 32px; }
+}

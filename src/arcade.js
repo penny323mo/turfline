@@ -1,4 +1,5 @@
 import { horses, cameras } from "./data.js";
+import { cameraShot, liveCameras, readView, saveView } from "./broadcast.js";
 import { icon } from "./icons.js";
 import {
   newGame,
@@ -46,7 +47,8 @@ const status = (msg) => {
 };
 const audio = raceAudio();
 const finishCam = { id: "line", name: "終點定鏡", en: "FINISH LINE" };
-const raceCameras = [...cameras, finishCam];
+const raceCameras = [...cameras, finishCam, ...liveCameras.slice(cameras.length)];
+const initialView = readView();
 let game = newGame(),
   save,
   stage,
@@ -61,8 +63,10 @@ let game = newGame(),
   replay = null,
   previousView = null;
 const cameraState = {
-  selected: 0,
-  cam: "track",
+  selected: initialView.horse,
+  cam: initialView.cam,
+  onShot: showShot,
+  onPick: (runner) => updateCamera(runner),
   time: 0.8,
   paused: false,
   visible: true,
@@ -98,15 +102,15 @@ $("second").value = "1";
 $("fs-camera").innerHTML = raceCameras
   .map((c) => '<option value="' + c.id + '">' + c.name + "</option>")
   .join("");
-$("camera-switch").innerHTML = cameras
+$("camera-switch").innerHTML = liveCameras
   .map(
     (c, i) =>
       '<button type="button" data-cam="' +
       c.id +
-      '" title="' +
+      '" title="快捷鍵 ' +
       (i + 1) +
       "　" +
-      c.name +
+      c.name + (c.id === "pack" ? "（點馬可跟拍）" : "") +
       '">' +
       icon(c.icon) +
       c.name +
@@ -118,29 +122,66 @@ quickFocus.className = "quick-focus";
 quickFocus.setAttribute("aria-label", "直播焦點馬匹");
 quickFocus.innerHTML = options;
 $("sound").before(quickFocus);
+const orderButtons = horses.map((horse, i) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.runner = String(i);
+  button.style.setProperty("--silk", horse.color);
+  button.innerHTML = '<span class="order-place"></span><b>' + pad(horse.number) + "</b>";
+  button.onclick = () => updateCamera(i);
+  $("order-runners").append(button);
+  return button;
+});
+let lastStrip = "";
+function showOrder(order, label) {
+  const signature = label + order.join("");
+  if (signature === lastStrip) return;
+  lastStrip = signature;
+  $("order-kind").textContent = label;
+  const focused = document.activeElement;
+  const runners = $("order-runners");
+  order.forEach((i, rank) => {
+    const button = orderButtons[i];
+    button.firstElementChild.textContent = String(rank + 1);
+    button.setAttribute("aria-label", label + "第 " + (rank + 1) + "，" + horses[i].number + " 號" + horses[i].name + "，跟拍");
+    button.title = horses[i].name;
+    if (runners.children[rank] !== button) runners.insertBefore(button, runners.children[rank]);
+  });
+  if (orderButtons.includes(focused) && document.activeElement !== focused)
+    focused.focus({ preventScroll: true });
+}
+function showShot(shot) {
+  const i = raceCameras.findIndex((c) => c.id === shot);
+  $("stage").dataset.shot = radar ? "radar" : shot;
+  $("cam-label").textContent = radar ? "2D　/　RACE RADAR"
+    : (cameraState.cam === "auto" ? "導播" : "CAM " + pad(i + 1)) + "　/　" + raceCameras[i].en;
+}
 function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   const changed = horse !== cameraState.selected || cam !== cameraState.cam;
   cameraState.selected = horse;
   cameraState.cam = cam;
-  const h = horses[horse],
-    i = raceCameras.findIndex((c) => c.id === cam);
+  const h = horses[horse];
   $("hero-bib").textContent = pad(h.number);
   $("hero-name").textContent = h.name;
   $("hero-en").textContent = h.en.toUpperCase();
-  $("cam-label").textContent = radar
-    ? "2D　/　RACE RADAR"
-    : "CAM " + pad(i + 1) + "　/　" + raceCameras[i].en;
+  const distance = cam === "auto" ? cameraState.courseFrame()?.ds[horse] ?? 0 : 0;
+  showShot(cameraShot(cam, distance));
   $("tracking-mark").textContent = pad(h.number);
   $("fs-horse").value = quickFocus.value = String(horse);
   $("fs-camera").value = cam;
   for (const b of $("camera-switch").children)
     b.setAttribute("aria-pressed", String(b.dataset.cam === cam));
+  for (const b of orderButtons)
+    b.setAttribute("aria-pressed", String(Number(b.dataset.runner) === horse));
   for (const row of $("field-body").rows) {
     const active = Number(row.dataset.i) === horse;
     row.classList.toggle("tracked", active);
     row.querySelector(".follow").setAttribute("aria-pressed", String(active));
   }
-  if (changed) stage?.cut();
+  if (changed) {
+    if (!replay) saveView(horse, cam);
+    stage?.cut();
+  }
   if (radar) drawRadar();
 }
 function priceCell(race, key, runner) {
@@ -417,6 +458,7 @@ function tick() {
   }
   let snap;
   $("race-bug").hidden = !live && !replay;
+  $("order-strip").hidden = !r.plan;
   if (!r.plan) {
     $("distance-label").textContent = "起步至終點　1,200 米";
     $("progress").style.width = "0%";
@@ -425,6 +467,8 @@ function tick() {
     snap = replay ? snapshotAt(r, replay.position()) : snapshot(r);
     if (replay) renderReplayClock(snap.t);
     const count = Math.ceil(-snap.t);
+    const stripKind = replay ? "重播走位" : !live ? "賽果" : count > 0 ? "檔位" : "走位";
+    showOrder(!replay && r.settlement ? r.settlement.order : snap.order, stripKind);
     $("countdown").hidden = !live || count <= 0;
     if (count > 0) $("countdown").textContent = count;
     $("distance-label").textContent =
@@ -446,15 +490,22 @@ function tick() {
     }
     if (k !== lastOrder) {
       lastOrder = k;
+      const active = document.activeElement;
+      const activeFollow = active?.dataset.follow;
       if ($("running-ladder")) $("running-ladder").innerHTML = ladder(order);
       const rows = Array.from($("field-body").rows);
       order.forEach((idx, rank) => {
         const row = rows.find((row) => Number(row.dataset.i) === idx);
         if (row) {
           row.querySelector(".rank").textContent = rank + 1;
-          $("field-body").append(row);
+          const current = $("field-body").rows[rank];
+          if (row !== current) $("field-body").insertBefore(row, current);
         }
       });
+      if (activeFollow !== undefined && !active.isConnected)
+        $("running-ladder")?.querySelector(`[data-follow="${activeFollow}"]`)?.focus({ preventScroll: true });
+      else if (rows.some((row) => row.contains(active)) && document.activeElement !== active)
+        active.focus({ preventScroll: true });
     }
     if (live) {
       const leader = snap.ds[order[0]];
@@ -652,6 +703,8 @@ function fullInfo() {
   $("full").setAttribute("aria-label", full ? "離開全螢幕" : "全螢幕");
   if (full) $("stage").append($("replay-deck"));
   else document.querySelector(".broadcast-strip").after($("replay-deck"));
+  if (full) $("stage").append($("order-strip"));
+  else $("stage").after($("order-strip"));
 }
 document.addEventListener("fullscreenchange", fullInfo);
 document.addEventListener("keydown", (e) => {
@@ -667,8 +720,8 @@ document.addEventListener("keydown", (e) => {
     /INPUT|SELECT/.test(e.target.tagName)
   )
     return;
-  if (["1", "2", "3"].includes(e.key))
-    updateCamera(cameraState.selected, cameras[Number(e.key) - 1].id);
+  if (!radar && ["1", "2", "3", "4", "5"].includes(e.key))
+    updateCamera(cameraState.selected, liveCameras[Number(e.key) - 1].id);
 });
 function dialog(title, html) {
   $("dialog-title").textContent = title;
@@ -682,7 +735,7 @@ $("dialog").onclick = (e) => {
 $("rules-button").onclick = () =>
   dialog(
     "遊戲玩法",
-    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>按封盤開跑開始賽事。即使冇落注亦可以睇。用名單揀焦點馬匹，按 1、2、3 切鏡，可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
+    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>按封盤開跑開始賽事。即使冇落注亦可以睇。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
   );
 $("history-button").onclick = () =>
   dialog(

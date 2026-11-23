@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 import { horses, duration, laneX } from "./data.js";
+import { cameraShot, fieldCamera } from "./broadcast.js";
 
 const venueShots = {
   overview: { eye: [-355, 760, 600], target: [-60, 0, 600], fov: 55 },
@@ -101,7 +102,9 @@ export async function startStage(canvas, state, refresh) {
   let cut = true,
     lastFrame = 0,
     lastUi = -1,
-    lastTime = state.time;
+    lastTime = state.time,
+    lastRaceTime,
+    lastShot;
   const canvasBox = canvas.parentElement;
   let onScreen = true;
   new IntersectionObserver(([entry]) => {
@@ -118,10 +121,47 @@ export async function startStage(canvas, state, refresh) {
   };
   new ResizeObserver(size).observe(canvasBox);
   size();
+  if (state.onPick) {
+    const raycaster = new THREE.Raycaster();
+    const bounds = new THREE.Box3();
+    canvas.addEventListener("click", (event) => {
+      if (lastShot !== "pack") return;
+      const rect = canvas.getBoundingClientRect();
+      raycaster.setFromCamera({
+        x: 2 * (event.clientX - rect.left) / rect.width - 1,
+        y: 1 - 2 * (event.clientY - rect.top) / rect.height,
+      }, camera);
+      let closest = Infinity, runner;
+      for (const [i, actor] of actors.entries()) {
+        const p = actor.group.position;
+        bounds.min.set(p.x - 0.8, 0, p.z - 2.1);
+        bounds.max.set(p.x + 0.8, 2.8, p.z + 1.8);
+        if (!raycaster.ray.intersectsBox(bounds)) continue;
+        actor.group.traverseVisible((mesh) => {
+          if (!mesh.isMesh) return;
+          if (mesh.isSkinnedMesh) mesh.computeBoundingSphere();
+          const hit = raycaster.intersectObject(mesh, false)[0];
+          if (hit && hit.distance < closest) {
+            closest = hit.distance;
+            runner = i;
+          }
+        });
+      }
+      if (runner !== undefined) state.onPick(runner);
+    });
+  }
   function place(dt) {
     const t = state.time;
     const race = state.courseFrame?.();
     const z = race ? race.ds[state.selected] : 10 + t * (1190 / duration);
+    const shot = cameraShot(state.cam, race ? z : 0);
+    if (shot !== lastShot) {
+      cut = true;
+      lastShot = shot;
+      state.onShot?.(shot);
+    }
+    if (race && Math.abs(race.t - lastRaceTime) > 0.8) cut = true;
+    lastRaceTime = race?.t;
     for (let i = 0; i < actors.length; i++) {
       const spec = horses[i],
         g = actors[i].group;
@@ -144,7 +184,7 @@ export async function startStage(canvas, state, refresh) {
       if (software) patches[i].position.set(g.position.x, 0.012, g.position.z);
     }
     focus.copy(actors[state.selected].group.position);
-    const venue = venueShots[state.cam];
+    const venue = venueShots[shot];
     const screenWidthBias = Math.max(1, 1.35 / camera.aspect);
     let fov = 32;
     if (venue) {
@@ -156,11 +196,24 @@ export async function startStage(canvas, state, refresh) {
           .sub(look)
           .multiplyScalar(1.9 / camera.aspect)
           .add(look);
-    } else if (state.cam === "line") {
+    } else if (shot === "pack") {
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const actor of actors) {
+        const p = actor.group.position;
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minZ = Math.min(minZ, p.z);
+        maxZ = Math.max(maxZ, p.z);
+      }
+      const frame = fieldCamera(minX, maxX, minZ, maxZ, camera.aspect);
+      look.set(frame.x, frame.y, frame.z);
+      eye.set(frame.x - 0.8 * frame.radius, frame.y + 0.6 * frame.radius, frame.z);
+      fov = frame.fov;
+    } else if (shot === "line") {
       eye.set(-17 * screenWidthBias, 8.2 * screenWidthBias, 1200);
       look.set(0, 1.2, 1200);
       fov = 36;
-    } else if (state.cam === "track") {
+    } else if (shot === "track") {
       eye
         .copy(focus)
         .add(
@@ -177,7 +230,7 @@ export async function startStage(canvas, state, refresh) {
         look.lerp(new THREE.Vector3(focus.x * 0.68, 1.5, z - 0.7), gateView);
         fov += 8 * gateView;
       }
-    } else if (state.cam === "aerial") {
+    } else if (shot === "aerial") {
       eye
         .copy(focus)
         .add(new THREE.Vector3(-3.4, 18.5 * screenWidthBias, -6.2));
@@ -195,7 +248,7 @@ export async function startStage(canvas, state, refresh) {
     aim.lerp(look, a);
     camera.lookAt(aim);
     // Keep the near-side timing cabinet out of the finish camera's sightline.
-    camera.near = state.cam === "line" ? Math.max(1, eye.distanceTo(look) - 9.8) : 0.08;
+    camera.near = shot === "line" ? Math.max(1, eye.distanceTo(look) - 9.8) : 0.08;
     camera.fov = fov / (state.zoom || 1);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
@@ -203,7 +256,7 @@ export async function startStage(canvas, state, refresh) {
     sun.target.position.copy(aim);
     const marker = document.getElementById("tracking-mark");
     if (marker) {
-      marker.hidden = Boolean(venue) || state.cam === "track";
+      marker.hidden = Boolean(venue) || shot === "track";
       if (!marker.hidden) {
         const pt = focus.clone();
         pt.y = 2.8;

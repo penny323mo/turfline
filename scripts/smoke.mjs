@@ -119,12 +119,24 @@ try {
   assert.equal(await peer.locator("[data-cancel]").count(), 0);
   await page.locator("#speed").click();
   await waitText(page, "#speed", "轉播 2×");
+  await page.locator('[data-cam="auto"]').click();
+  await page.locator('#order-runners [data-runner="4"]').click();
   await page.reload();
   await ready(page);
+  await waitText(page, "#hero-bib", "05");
+  assert.equal(await page.locator('[data-cam="auto"]').getAttribute("aria-pressed"), "true");
+  await waitText(peer, "#hero-bib", "01");
   await waitText(page, "#balance", "920");
   await waitText(page, "#ticket-count", "8 張");
-  if (!realtime) await context.clock.setFixedTime(now + 18000);
+  if (!realtime) {
+    await context.clock.setFixedTime(now + 11000);
+    await page.locator("#stage").scrollIntoViewIfNeeded();
+    await waitText(page, "#cam-label", "導播　/　FIELD WIDE");
+    await context.clock.setFixedTime(now + 18000);
+    await waitText(page, "#cam-label", "導播　/　TELEPHOTO");
+  }
   for (const [cam, num] of [
+    ["pack", 5],
     ["aerial", 3],
     ["tele", 6],
     ["track", 2],
@@ -150,6 +162,9 @@ try {
         document.querySelector("#stage").classList.contains("expanded"),
     ),
   );
+  await page.locator('#stage #order-runners [data-runner="3"]').click();
+  await waitText(page, "#hero-bib", "04");
+  await waitText(peer, "#hero-bib", "01");
   await page.locator("#full").click();
   assert.equal(await page.locator("#field-body tr").count(), 6);
   if (!realtime) await context.clock.setFixedTime(now + 100000);
@@ -159,6 +174,8 @@ try {
   const order = await page
     .locator("#field-body tr")
     .evaluateAll((rows) => rows.map((tr) => Number(tr.dataset.i)));
+  assert.deepEqual(await page.locator("#order-runners button").evaluateAll(
+    (buttons) => buttons.map((b) => Number(b.dataset.runner))), order);
   const total = tickets.reduce((sum, t) => {
     const won =
       t.market === "win"
@@ -172,6 +189,7 @@ try {
   await page.reload();
   await ready(page);
   await waitText(page, "#balance", expected);
+  await waitText(page, "#hero-bib", "04");
   await page.locator("#watch-replay").click();
   await waitText(page, "#live-status", "REPLAY");
   await waitText(peer, "#live-status", "RESULT");
@@ -190,6 +208,7 @@ try {
   assert(await page.locator("#stage #replay-exit").isVisible());
   await page.locator("#replay-exit").click();
   await waitText(page, "#live-status", "RESULT");
+  await waitText(page, "#hero-bib", "04");
   await page.locator("#full").click();
   await waitText(page, "#balance", expected);
   await page.locator("#history-button").click();
@@ -202,6 +221,7 @@ try {
   await waitText(page, "#meet-number", "R02");
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
+  assert(await page.locator("#order-strip").isHidden());
   assert(await peer.locator("#replay-deck").isHidden());
   await page.locator('[data-price="place"][data-runner="4"]').click();
   assert.equal(await page.locator("#pick").inputValue(), "4");
