@@ -100,8 +100,9 @@ const libraryCards = [
     title: "馬匹與步態",
     tag: "01　/　HORSES",
     image: "track",
-    text: "Ayan 馬匹配備馬鞍、韁繩同跑步骨架。另提供 2K 毛皮牧場馬及低面數原型，方便同機位比較。",
+    text: "Ayan 賽駒依路程完成四拍疾馳。可逐格檢查四蹄着地，或者用同一機位比較牧場馬同低面數原型。",
     links: [
+      ["睇新舊馬步對照", "./views/gallop-comparison.mp4"],
       [
         "Sketchfab · Ayan",
         "https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318",
@@ -172,7 +173,7 @@ function drawCards() {
     .join("");
 }
 const comparisons = [
-  { id: "ayan", name: "Ayan 競賽配裝", detail: "32,124 三角面 · 原生跑步動畫" },
+  { id: "ayan", name: "Ayan 競賽配裝", detail: "32,124 三角面 · 四拍疾馳" },
   { id: "ranch", name: "Ranch 牧場馬", detail: "37,160 三角面 · 2K 毛皮貼圖" },
   { id: "base", name: "Quaternius 原型", detail: "2,182 三角面 · 低面數對照" },
 ];

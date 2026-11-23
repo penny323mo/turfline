@@ -89,6 +89,7 @@ export function makeRacingTack(spec) {
   const tack = new THREE.Group();
   const shape = sculpt();
   const jacket = sculpt();
+  const legs = sculpt();
   const accent = spec.color;
   const skin = ['#e1a47f', '#b77f5e', '#d69971'][((spec.number || 1) - 1) % 3];
   const panels = [];
@@ -115,7 +116,7 @@ export function makeRacingTack(spec) {
   shape.joint([0,1.66,-0.26], [0.23,0.075,0.134], '#51372a');
 
   // The rider sits in a short-stirrup racing crouch, with both hands at the withers.
-  shape.joint([0,1.754,-0.117], [0.165,0.117,0.156], white);
+  legs.joint([0,1.754,-0.117], [0.165,0.117,0.156], white);
   jacket.limb([0,1.78,-0.10], [0,1.845,-0.032], 0.115, 0.115, leather, 1.37);
   jacket.limb([0,1.826,-0.053], [0,1.923,0.071], 0.112, 0.124, accent, 1.35);
   jacket.limb([0,1.923,0.071], [0,2.045,0.226], 0.124, 0.115, accent, 1.42);
@@ -140,12 +141,12 @@ export function makeRacingTack(spec) {
     const hip = [side*0.125,1.75,-0.105];
     const knee = [side*0.294,1.422,0.215];
     const ankle = [side*0.312,1.113,-0.06];
-    shape.limb(hip, knee, 0.115, 0.079, white);
-    shape.joint(knee, [0.077,0.076,0.076], white);
-    shape.limb(knee, [side*0.302,1.36,0.164], 0.078, 0.072, white);
-    shape.limb([side*0.302,1.369,0.17], ankle, 0.077, 0.041, '#322822');
-    shape.limb([side*0.302,1.369,0.17], [side*0.305,1.335,0.135], 0.078, 0.074, '#764733');
-    shape.joint([side*0.314,1.098,0.005], [0.059,0.042,0.116], '#302824');
+    legs.limb(hip, knee, 0.115, 0.079, white);
+    legs.joint(knee, [0.077,0.076,0.076], white);
+    legs.limb(knee, [side*0.302,1.36,0.164], 0.078, 0.072, white);
+    legs.limb([side*0.302,1.369,0.17], ankle, 0.077, 0.041, '#322822');
+    legs.limb([side*0.302,1.369,0.17], [side*0.305,1.335,0.135], 0.078, 0.074, '#764733');
+    legs.joint([side*0.314,1.098,0.005], [0.059,0.042,0.116], '#302824');
     shape.limb([side*0.265,1.527,0.067], [side*0.336,1.085,-0.012], 0.009,0.008,leather);
     shape.limb([side*0.367,1.067,-0.014], [side*0.367,1.113,0.013], 0.009,0.009,gold);
     shape.limb([side*0.367,1.067,-0.014], [side*0.279,1.067,-0.014], 0.009,0.009,gold);
@@ -173,8 +174,19 @@ export function makeRacingTack(spec) {
   upperBody.name = 'JockeyUpperBody';
   upperBody.position.copy(waist.position).multiplyScalar(-1);
   waist.add(upperBody);
-  tack.add(shape.finish(), waist);
-  return { tack, waist, upperBody };
+  const breeches = legs.finish();
+  breeches.name = 'JockeyLegs';
+  const positions = breeches.geometry.attributes.position, delta = new Float32Array(positions.count * 3);
+  for (let i = 0; i < positions.count; i++) {
+    const lift = 0.12 * THREE.MathUtils.smoothstep(positions.getY(i),1.30,1.75);
+    delta[i*3+1] = lift;
+    delta[i*3+2] = -0.30 * lift;
+  }
+  breeches.geometry.morphTargetsRelative = true;
+  breeches.geometry.morphAttributes.position = [new THREE.BufferAttribute(delta,3)];
+  breeches.updateMorphTargets();
+  tack.add(shape.finish(), breeches, waist);
+  return { tack, waist, upperBody, breeches };
 }
 
 function makeBridle(detailed) {

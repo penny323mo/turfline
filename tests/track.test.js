@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { Box3, Group, Vector3 } from "three";
+import { AnimationMixer, Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
 import { attachStartingStalls } from "../src/landscape.js";
@@ -62,5 +62,63 @@ test("the foremost animated muzzle vertex meets the official line at every sampl
       tip = Math.max(tip, point.z);
     }
     assert.ok(Math.abs(tip - 1200) < 0.0001);
+  }
+});
+
+test("each runner plants four separate hooves and has an airborne phase at racing speed", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const soles = [11901, 13645, 12585, 14273];
+  const speed = 16, step = 1 / 60;
+  for (const spec of horses) {
+    const horse = makeAyanHorse(spec), body = horse.group.getObjectByName("Object_11");
+    const slip = soles.map(() => []);
+    let previous, airborne = 0;
+    for (let i = 0; i <= 480; i++) {
+      const d = 40 + i * step;
+      horse.seekDistance(d, true);
+      horse.group.position.z = d - horse.noseLead;
+      horse.group.updateMatrixWorld(true);
+      const points = soles.map(index => body.getVertexPosition(index, new Vector3()).applyMatrix4(body.matrixWorld));
+      if (points.every(p => p.y > 0.07)) airborne++;
+      if (previous) points.forEach((p,j) => {
+        if (Math.max(p.y, previous[j].y) < 0.018)
+          slip[j].push(Math.abs(p.z - previous[j].z) * speed / step);
+      });
+      previous = points;
+    }
+    assert.ok(airborne > 30);
+    for (const samples of slip) {
+      assert.ok(samples.length > 30);
+      samples.sort((a,b) => a-b);
+      assert.ok(samples[Math.floor(samples.length / 2)] < 0.8, "planted sole moves with the turf");
+    }
+  }
+});
+
+test("mounted download reproduces the in-game hooves, nose and jockey when sampled out of order", async () => {
+  const bytes = await asset("horse-ayan.glb"), mounted = await asset("horse-ayan-mounted.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const runner = makeAyanHorse(horses[0]);
+  const baked = await new GLTFLoader().parseAsync(mounted.buffer.slice(mounted.byteOffset, mounted.byteOffset + mounted.byteLength), "");
+  const clip = baked.animations.find(a => a.name === "Gallop");
+  assert.ok(Math.abs(clip.duration - 7.05 / 16) < 0.00001);
+  const playback = new AnimationMixer(baked.scene);
+  playback.clipAction(clip).play();
+  function samples(group) {
+    const body = group.getObjectByName("Object_11");
+    const points = [11901,13645,12585,14273,3998].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
+    return [...points, group.getObjectByName("JockeyWaist").getWorldPosition(new Vector3())];
+  }
+  for (let i=0; i<73; i++) {
+    const t = clip.duration * ((i * 37) % 73) / 73;
+    runner.seek(t,true,16);
+    playback.setTime(t);
+    runner.group.updateMatrixWorld(true);
+    baked.scene.updateMatrixWorld(true);
+    const actual = samples(runner.group), exported = samples(baked.scene);
+    actual.forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002));
+    assert.ok(Math.abs(runner.group.getObjectByName("JockeyLegs").morphTargetInfluences[0]
+      - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
   }
 });

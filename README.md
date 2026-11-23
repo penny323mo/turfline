@@ -45,6 +45,7 @@ Production 預覽預設使用本機 4174 埠。在另一個 Terminal 執行 `npm
 
 ## 驗收模型
 
+- [新舊馬步對照](https://penny323mo.github.io/turfline/views/gallop-comparison.mp4) 用同一場賽事、同一秒嘅側鏡，先原速再半速播放。1 號馬每步行 7.05 米，六駒各有自己嘅步幅，直播同重播都按實際前進距離驅動。
 - 在名單中選擇追蹤馬匹。按 1、2、3 切換場邊跟拍、俯視和直播長鏡。
 - 按空白鍵暫停，用時間軸檢查馬步。畫面右上角的倍率按鈕可切換 1×、1.4× 和 1.8×。
 - 在「模型庫」進入場地定點鏡頭，或者點擊「同機位比較」直接檢查其中一個候選的馬頸、腳部及騎師姿勢。
@@ -52,7 +53,7 @@ Production 預覽預設使用本機 4174 埠。在另一個 Terminal 執行 `npm
 
 | 馬匹候選 | 馬匹資產三角面 | 來源與用途 |
 | --- | ---: | --- |
-| Ayan | 32,124 | [Sketchfab 原作](https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318)，CC BY 4.0。原有跑步骨架，預設競賽配裝。 |
+| Ayan | 32,124 | [Sketchfab 原作](https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318)，CC BY 4.0。保留原作骨架，配上按路程驅動嘅四拍疾馳。 |
 | Ranch | 37,160 | [Rigged Horse](https://opengameart.org/content/rigged-horse)，CC0。牧場馬體型，2K 貼圖，已移植待機及疾馳動作。 |
 | Quaternius | 2,182 | [Ultimate Animated Animal Pack](https://quaternius.com/packs/ultimateanimatedanimals.html)，CC0。低面數對照。 |
 

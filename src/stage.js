@@ -177,7 +177,7 @@ export async function startStage(canvas, state, refresh) {
       g.rotation.y = 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
       // Sample the same stride from race time in live coverage and on replay.
       if (race)
-        actors[i].seek(Math.max(0, race.t) + i * 0.147, race.t > 0, 16);
+        actors[i].seekDistance(race.ds[i], race.t > 0);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
       if (race) g.position.z -= actors[i].noseLead;
@@ -286,7 +286,7 @@ export async function startStage(canvas, state, refresh) {
       return;
     }
     if (!cut && (state.paused || state.staticPose || venueShots[state.cam] || (software && state.holdFrame))) return;
-    const fps = !document.hasFocus() ? 6 : software ? 18 : 45;
+    const fps = !document.hasFocus() ? 6 : software ? 18 : 60;
     if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
     // Do not enqueue another complete frame while the previous one is pending.
     if (pendingFrame) {

@@ -2,43 +2,31 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { makeRacingTack } from './horse.js';
+import { bodyMotion, makeGallop, strideLength } from './gallop.js';
 
 const SCALE = 0.444;
 const REST_GROUND = 2.217;
-const RETURN_TIME = 0.19;
 let assetPromise;
 let asset;
 
-// These sole vertices reached the turf in a 360-pose sweep of Ayan's full
-// animation and its loop transition. Re-skinning them tracks actual contact
-// between samples while preserving the stride's natural flight phase.
+// Extremal skinned vertices sampled across the gallop and the gate transition.
 const soleVertices = [
-  11901, 13645, 2355, 8804, 3273, 9973, 9938, 3281, 9967, 202, 4573,
-  4584, 210, 4974, 2607, 1143, 12585, 6138, 1135, 6174, 4524,
+  202, 210, 1135, 1143, 2355, 2607, 3273, 3281, 4524, 4573, 4575,
+  4584, 4974, 6138, 6145, 6168, 6174, 8416, 8804, 9938, 9945, 9967,
+  9973, 11901, 12585, 13645, 14273,
 ];
-// Outermost points of the muzzle across 720 poses, including the loop blend
-// and both yaw limits. Race distance is measured at the nose.
-const muzzleVertices = [3998, 1879, 11244, 7524, 7733, 11446];
-
-function closeStride(clip) {
-  // The export ends mid-stride. Bridge its final pose to the initial one
-  // with the track's native quaternion/linear interpolation.
-  const duration = clip.duration + RETURN_TIME;
-  const tracks = clip.tracks.map(track => {
-    const result = track.clone(), size = track.getValueSize();
-    result.times = new Float32Array([...track.times, duration]);
-    result.values = new Float32Array([...track.values, ...track.values.slice(0, size)]);
-    return result;
-  });
-  return new THREE.AnimationClip('Ayan running stride', duration, tracks);
-}
+const muzzleVertices = [1879, 1970, 3998, 4087, 7524, 7733, 11244, 11446];
 
 export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', document.baseURI).href) {
   if (!assetPromise) {
     assetPromise = new GLTFLoader().loadAsync(url).then(gltf => {
       const stride = THREE.AnimationClip.findByName(gltf.animations, 'metarigAction.003');
       if (!stride) throw new Error('Ayan running animation is missing');
-      asset = { scene: gltf.scene, stride: closeStride(stride) };
+      // Preserve the authored standing pose for fitting tack and waiting in the gate.
+      const rest = new THREE.AnimationMixer(gltf.scene);
+      rest.clipAction(stride).play();
+      rest.setTime(0);
+      asset = { scene: gltf.scene, stride: makeGallop(gltf.scene, SCALE, REST_GROUND) };
       return asset;
     }).catch(error => {
       assetPromise = undefined;
@@ -83,6 +71,7 @@ export function makeAyanHorse(spec) {
   group.add(mount);
   const mixer = new THREE.AnimationMixer(horse);
   const stride = mixer.clipAction(asset.stride).play();
+  stride.weight = 0;
   mixer.update(0);
   horse.updateMatrixWorld(true);
   const body = horse.getObjectByName('Object_11');
@@ -99,16 +88,18 @@ export function makeAyanHorse(spec) {
   horse.rotation.y = Math.PI / 2;
   horse.scale.setScalar(SCALE);
   horse.position.y = REST_GROUND * SCALE;
-  const { tack, waist } = makeRacingTack(spec);
+  const { tack, waist, breeches } = makeRacingTack(spec);
   tack.scale.set(1.025, 1, 1.02);
   tack.position.set(0,0.044,-0.05);
   mount.add(tack);
   group.updateMatrixWorld(true);
   horse.getObjectByName('spine008_50').attach(tack);
-  const playbackRate = speed => THREE.MathUtils.clamp(0.9 + speed * 0.025, 0.95, 1.72);
+  const metres = strideLength(spec.number);
+  const offset = [0.12, 0.61, 0.32, 0.85, 0.46, 0.04][spec.number - 1] ?? 0;
+  let travelled = 0;
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
   let noseLead = 0;
-  function placeRider(running) {
+  function placeRider(phase, weight) {
     // SkinnedMesh refreshes its bind inverse in updateMatrixWorld. Start each
     // solve from the same mount origin so scrubbing also works between renders.
     mount.position.y = 0;
@@ -127,24 +118,29 @@ export function makeAyanHorse(spec) {
       body.getVertexPosition(vertex, contact).applyMatrix4(bodyToMount);
       noseLead = Math.max(noseLead, contact.z * yawCos - contact.x * yawSin);
     }
-    const phase = stride.time / asset.stride.duration * Math.PI * 2;
-    waist.rotation.x = running ? 0.34 + Math.sin(phase) * 0.055 : 0;
+    const {heave, pitch} = bodyMotion(phase);
+    const lift = weight * (0.052 - 0.68 * (heave + 0.155));
+    breeches.morphTargetInfluences[0] = lift / 0.12;
+    waist.position.y = 1.78 + lift;
+    waist.position.z = -0.10 - 0.30 * lift;
+    waist.rotation.x = weight * (0.26 - pitch + 0.075 * Math.sin(phase * Math.PI * 2 - 1.1));
+  }
+  function pose(distance, weight) {
+    travelled = distance;
+    const phase = THREE.MathUtils.euclideanModulo(distance / metres + offset, 1);
+    stride.weight = weight;
+    mixer.setTime(phase);
+    placeRider(phase, weight);
+  }
+  function seekDistance(distance, running) {
+    pose(distance, running ? THREE.MathUtils.smoothstep(distance, 0, 2.6) : 0);
   }
   function seek(time, running = false, speed = 0) {
-    stride.timeScale = 1;
-    const phase = running ? THREE.MathUtils.euclideanModulo(time * playbackRate(speed), asset.stride.duration) : 0;
-    mixer.setTime(phase);
-    placeRider(running);
+    pose(running ? time * speed : 0, running ? 1 : 0);
   }
   function update(dt, running = false, speed = 0) {
-    if (!running) {
-      seek(0);
-      return;
-    }
-    stride.timeScale = playbackRate(speed);
-    mixer.update(dt);
-    placeRider(true);
+    pose(running ? travelled + dt * speed : 0, running ? 1 : 0);
   }
   seek(0);
-  return { group, update, seek, get noseLead() { return noseLead; } };
+  return { group, update, seek, seekDistance, get noseLead() { return noseLead; } };
 }
