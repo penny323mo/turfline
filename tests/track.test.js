@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { AnimationMixer, Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
+import { hoofContacts } from "../src/race-audio.js";
+import { distance } from "../src/race.js";
 import { attachStartingStalls } from "../src/landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "../src/horse-ayan.js";
 
@@ -120,5 +122,25 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
     actual.forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002));
     assert.ok(Math.abs(runner.group.getObjectByName("JockeyLegs").morphTargetInfluences[0]
       - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
+  }
+});
+
+test("audible strikes coincide with the first descent to turf of the corresponding skinned hoof", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const soles = [14273, 12585, 13645, 11901], point = new Vector3();
+  for (const spec of horses) {
+    const runner = makeAyanHorse(spec), mesh = runner.group.getObjectByName("Object_11");
+    const plan = { finish: 68 + spec.number / 4, early: 0.01, surge: -0.008 };
+    const height = (t, hoof) => {
+      runner.seekDistance(distance(plan, t), true);
+      runner.group.updateMatrixWorld(true);
+      return mesh.getVertexPosition(soles[hoof], point).applyMatrix4(mesh.matrixWorld).y;
+    };
+    for (const {time, hoof} of hoofContacts(plan, spec.number, 24, 26)) {
+      const contact = height(time, hoof);
+      assert.ok(contact >= -0.003 && contact < 0.02);
+      assert.ok(height(time - 0.020, hoof) > contact + 0.02);
+    }
   }
 });

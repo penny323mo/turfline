@@ -103,6 +103,7 @@ const libraryCards = [
     text: "Ayan 賽駒依路程完成四拍疾馳。可逐格檢查四蹄着地，或者用同一機位比較牧場馬同低面數原型。",
     links: [
       ["睇新舊馬步對照", "./views/gallop-comparison.mp4"],
+      ["聽直播同慢鏡蹄聲", "./views/hoofbeats.mp4"],
       [
         "Sketchfab · Ayan",
         "https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318",

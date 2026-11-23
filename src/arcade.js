@@ -11,6 +11,7 @@ import {
   cancel,
   start,
   changeSpeed,
+  elapsed,
   snapshot,
   snapshotAt,
   settle,
@@ -181,6 +182,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   if (changed) {
     if (!replay) saveView(horse, cam);
     stage?.cut();
+    syncSound();
   }
   if (radar) drawRadar();
 }
@@ -449,6 +451,16 @@ async function act(change, message = "", guard = game.race.number) {
     display();
   }
 }
+function syncSound(t) {
+  const r = game.race;
+  if (!r.plan || (!replay && r.phase !== "running")) {
+    audio.reset();
+    return;
+  }
+  const rate = replay ? (replay.playing ? replay.rate : 0) : r.speed;
+  const end = replay ? replay.to : Math.max(...r.plan.map(h => h.finish));
+  audio.step(r, cameraState.selected, t ?? (replay ? replay.position() : elapsed(r)), rate, end, !!replay);
+}
 function tick() {
   const r = game.race,
     live = r.phase === "running";
@@ -523,9 +535,8 @@ function tick() {
     }
     if (live && snap.t >= 0 && lastBell !== r.number) {
       lastBell = r.number;
-      audio.bell();
+      if (snap.t < 0.45) audio.bell();
     }
-    audio.step(live && snap.t >= 0);
     if (
       live &&
       !busy &&
@@ -538,6 +549,7 @@ function tick() {
       });
     }
   }
+  syncSound(snap?.t);
   if (radar) drawRadar(snap);
 }
 $("closed").addEventListener("click", (e) => {
@@ -661,7 +673,10 @@ $("replay-scrub").oninput = (e) => {
   stage?.cut();
   tick();
 };
-$("replay-rate").onchange = (e) => replay.setRate(Number(e.target.value));
+$("replay-rate").onchange = (e) => {
+  replay.setRate(Number(e.target.value));
+  syncSound();
+};
 $("replay-line").onclick = () => {
   replay.pauseAt(replay.winnerTime);
   updateCamera(game.race.settlement.order[0], radar ? "track" : "line");
@@ -675,15 +690,22 @@ $("replay-exit").onclick = () => {
   $(full ? "fs-replay" : "watch-replay").focus({ preventScroll: true });
 };
 $("sound").onclick = async () => {
+  const button = $("sound");
+  button.disabled = true;
   try {
     const on = await audio.toggle();
-    $("sound").textContent = "音效 " + (on ? "開" : "關");
-    $("sound").setAttribute("aria-pressed", String(on));
-    $("sound").setAttribute("aria-label", on ? "關閉賽場音效" : "開啟賽場音效");
+    button.textContent = "音效 " + (on ? "開" : "關");
+    button.setAttribute("aria-pressed", String(on));
+    button.setAttribute("aria-label", on ? "關閉賽場音效" : "開啟賽場音效");
+    if (on) syncSound();
   } catch {
     status("此瀏覽器未能播放音效。");
+  } finally {
+    button.disabled = false;
   }
 };
+document.addEventListener("visibilitychange", () => document.hidden ? audio.reset() : syncSound());
+window.addEventListener("pagehide", () => audio.reset());
 $("full").onclick = async () => {
   const el = $("stage");
   if (document.fullscreenElement) await document.exitFullscreen();
@@ -705,6 +727,8 @@ function fullInfo() {
   else document.querySelector(".broadcast-strip").after($("replay-deck"));
   if (full) $("stage").append($("order-strip"));
   else $("stage").after($("order-strip"));
+  if (full) $("stage").append($("sound"));
+  else quickFocus.after($("sound"));
 }
 document.addEventListener("fullscreenchange", fullInfo);
 document.addEventListener("keydown", (e) => {

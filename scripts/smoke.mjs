@@ -164,8 +164,13 @@ try {
   );
   await page.locator('#stage #order-runners [data-runner="3"]').click();
   await waitText(page, "#hero-bib", "04");
+  await page.locator("#stage #sound").click();
+  await waitText(page, "#sound", "音效 開");
+  assert.equal(await peer.locator("#sound").getAttribute("aria-pressed"), "false");
   await waitText(peer, "#hero-bib", "01");
   await page.locator("#full").click();
+  await page.locator(".live-controls #sound").click();
+  await waitText(page, "#sound", "音效 關");
   assert.equal(await page.locator("#field-body tr").count(), 6);
   if (!realtime) await context.clock.setFixedTime(now + 100000);
   await waitText(page, "#phase", "賽事完成", 80000);

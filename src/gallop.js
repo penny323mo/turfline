@@ -8,15 +8,12 @@ import {
 } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
+import { stanceStarts, strideMetres } from './stride.js';
+export { strideLength } from './stride.js';
+
 const turn = Math.PI * 2;
-const strideMetres = 7.05;
-const lengthAdjustments = [0, 0.026, -0.018, 0.014, -0.031, 0.037];
 const stance = 0.22;
 const xAxis = new Vector3(1, 0, 0);
-
-export function strideLength(number) {
-  return strideMetres * (1 + (lengthAdjustments[number - 1] ?? 0));
-}
 
 export function bodyMotion(phase) {
   const a = turn * phase;
@@ -107,10 +104,10 @@ export function makeGallop(source, scale, ground) {
     return { joints, segments, front, beat, soleZ, toeZ: soleZ - toe.z, toeY: -toe.y };
   }
   const legs = [
-    leg(['thighR_61', 'shinR_60', 'footR_59', 'r_toeR_58'], false, 0.0, -0.753),
-    leg(['thighL_56', 'shinL_55', 'footL_54', 'r_toeL_53'], false, 0.14, -0.752),
-    leg(['shoulderR_45', 'upper_armR_44', 'forearmR_43', 'handR_42', 'f_toeR_41'], true, 0.36, 0.463),
-    leg(['shoulderL_39', 'upper_armL_38', 'forearmL_37', 'handL_36', 'f_toeL_35'], true, 0.51, 0.462),
+    leg(['thighR_61', 'shinR_60', 'footR_59', 'r_toeR_58'], false, stanceStarts[0], -0.753),
+    leg(['thighL_56', 'shinL_55', 'footL_54', 'r_toeL_53'], false, stanceStarts[1], -0.752),
+    leg(['shoulderR_45', 'upper_armR_44', 'forearmR_43', 'handR_42', 'f_toeR_41'], true, stanceStarts[2], 0.463),
+    leg(['shoulderL_39', 'upper_armL_38', 'forearmL_37', 'handL_36', 'f_toeL_35'], true, stanceStarts[3], 0.462),
   ];
 
   const q = new Quaternion(),

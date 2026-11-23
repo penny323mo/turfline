@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { makeRacingTack } from './horse.js';
-import { bodyMotion, makeGallop, strideLength } from './gallop.js';
+import { bodyMotion, makeGallop } from './gallop.js';
+import { launchWeight, strideCount } from './stride.js';
 
 const SCALE = 0.444;
 const REST_GROUND = 2.217;
@@ -94,8 +95,6 @@ export function makeAyanHorse(spec) {
   mount.add(tack);
   group.updateMatrixWorld(true);
   horse.getObjectByName('spine008_50').attach(tack);
-  const metres = strideLength(spec.number);
-  const offset = [0.12, 0.61, 0.32, 0.85, 0.46, 0.04][spec.number - 1] ?? 0;
   let travelled = 0;
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
   let noseLead = 0;
@@ -127,13 +126,13 @@ export function makeAyanHorse(spec) {
   }
   function pose(distance, weight) {
     travelled = distance;
-    const phase = THREE.MathUtils.euclideanModulo(distance / metres + offset, 1);
+    const phase = THREE.MathUtils.euclideanModulo(strideCount(spec.number, distance), 1);
     stride.weight = weight;
     mixer.setTime(phase);
     placeRider(phase, weight);
   }
   function seekDistance(distance, running) {
-    pose(distance, running ? THREE.MathUtils.smoothstep(distance, 0, 2.6) : 0);
+    pose(distance, running ? launchWeight(distance) : 0);
   }
   function seek(time, running = false, speed = 0) {
     pose(running ? time * speed : 0, running ? 1 : 0);

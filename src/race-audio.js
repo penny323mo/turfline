@@ -1,51 +1,150 @@
-export function raceAudio() {
-  let ctx,
-    enabled = false,
-    nextBeat = 0;
-  function pulse(time, hz, length, volume, type, end) {
-    const source = ctx.createOscillator(),
-      gain = ctx.createGain();
-    source.type = type;
-    source.frequency.setValueAtTime(hz, time);
-    source.frequency.exponentialRampToValueAtTime(end, time + length);
-    gain.gain.setValueAtTime(0.001, time);
-    gain.gain.exponentialRampToValueAtTime(volume, time + 0.009);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + length);
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    source.start(time);
-    source.stop(time + length + 0.01);
+import { distance } from "./race.js";
+import { launchWeight, stanceStarts, strideCount } from "./stride.js";
+
+// The skinned hoof takes this fraction of a stride to reach the turf after
+// its leg enters stance. Use the first contact, including on a rolling hoof.
+const contactPhase = stanceStarts.map((phase, i) => phase + [0.019, 0.023, 0.010, 0.032][i]);
+const lookahead = 0.24;
+
+// Return impacts in (from, to]. Adjacent scheduling windows share an endpoint.
+export function hoofContacts(plan, number, from, to) {
+  const at = raceTime => strideCount(number, distance(plan, raceTime));
+  const first = at(from), last = at(to), contacts = [];
+  if (last <= first) return contacts;
+  for (let stride = Math.floor(first); stride <= Math.floor(last); stride++) {
+    for (const [hoof, phase] of contactPhase.entries()) {
+      const target = stride + phase;
+      if (target <= first || target > last) continue;
+      let lo = from, hi = to;
+      // The break accelerates and the finish caps the run-out. Invert the
+      // same course-distance function that positions the animated horse.
+      while (hi - lo > 0.0002) {
+        const mid = (lo + hi) / 2;
+        if (at(mid) < target) lo = mid;
+        else hi = mid;
+      }
+      contacts.push({ time: (lo + hi) / 2, stride, hoof });
+    }
   }
+  return contacts;
+}
+
+function turfImpact(ctx, hoof, variant) {
+  const rate = ctx.sampleRate, length = 0.14;
+  const sample = ctx.createBuffer(1, Math.ceil(rate * length), rate);
+  const data = sample.getChannelData(0);
+  let seed = 2719 * (1 + hoof) + 43 * variant, low = 0, mid = 0;
+  const smooth = hz => 1 - Math.exp(-2 * Math.PI * hz / rate);
+  const lowPass = smooth(420), midPass = smooth(2100);
+  const pitch = [77, 84, 91, 86][hoof] + variant * 2;
+  for (let i = 0; i < data.length; i++) {
+    const t = i / rate;
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const noise = seed / 2147483648 - 1;
+    low += lowPass * (noise - low);
+    mid += midPass * (noise - mid);
+    const impact = 2 * Math.PI * (pitch * t + 0.56 * (1 - Math.exp(-t / 0.008)));
+    const thud = 0.52 * Math.sin(impact) * Math.exp(-t / 0.019);
+    const turf = 0.92 * (mid - low) * Math.exp(-t / 0.011) + 0.37 * low * Math.exp(-t / 0.033);
+    data[i] = (1 - Math.exp(-t / 0.0012)) * (thud + turf);
+  }
+  return sample;
+}
+
+export function raceAudio() {
+  let ctx, buffers, enabled = false, schedule = null;
+  const voices = new Set();
+
+  function play(source, gain, when, duration) {
+    source.connect(gain).connect(ctx.destination);
+    const voice = { source, gain, when };
+    voices.add(voice);
+    source.onended = () => {
+      voices.delete(voice);
+      source.disconnect();
+      gain.disconnect();
+    };
+    source.start(when);
+    if (duration) source.stop(when + duration);
+  }
+
+  function reset() {
+    schedule = null;
+    for (const voice of voices) {
+      const now = ctx.currentTime;
+      // Silence future strikes and release a sounding impact without a click.
+      if (voice.when > now) voice.source.stop(now);
+      else {
+        voice.gain.gain.cancelAndHoldAtTime?.(now);
+        voice.gain.gain.setTargetAtTime(0, now, 0.002);
+        voice.source.stop(now + 0.010);
+      }
+    }
+    voices.clear();
+  }
+
+  function strike(event, number, when, strength) {
+    const source = ctx.createBufferSource(), gain = ctx.createGain();
+    const variant = (event.stride + number + event.hoof) % 3;
+    source.buffer = buffers[event.hoof][variant];
+    source.playbackRate.value = 0.98 + 0.015 * variant;
+    gain.gain.value = [0.64, 0.75, 0.70, 0.83][event.hoof] * strength;
+    play(source, gain, when);
+  }
+
   return {
     async toggle() {
       ctx ??= new AudioContext();
       if (!enabled) {
         await ctx.resume();
-        nextBeat = 0;
-      } else await ctx.suspend();
-      enabled = !enabled;
+        buffers ??= contactPhase.map((_, hoof) => [0, 1, 2].map(variant => turfImpact(ctx, hoof, variant)));
+        enabled = true;
+      } else {
+        reset();
+        await ctx.suspend();
+        enabled = false;
+      }
       return enabled;
     },
-    step(running) {
-      if (!enabled || !running || document.hidden || ctx.currentTime < nextBeat)
+    reset,
+    step(race, runner, t, rate, until, replay) {
+      if (!enabled || ctx.state !== "running" || document.hidden || rate <= 0 || t < 0) {
+        if (schedule) reset();
         return;
-      const t = ctx.currentTime;
-      for (const [dt, f] of [
-        [0, 130],
-        [0.11, 110],
-        [0.23, 145],
-        [0.29, 93],
-      ])
-        pulse(t + dt, f, 0.09, 0.11, "triangle", 38);
-      nextBeat = t + 0.49;
+      }
+      const now = ctx.currentTime;
+      const discontinuity = !schedule || schedule.race !== race.number || schedule.runner !== runner
+        || schedule.replay !== replay || schedule.rate !== rate
+        || Math.abs(t - (schedule.t + (now - schedule.now) * rate)) > 0.045 * rate;
+      if (discontinuity) {
+        if (schedule) reset();
+        schedule = { race: race.number, runner, replay, rate, t, now, until: t };
+      }
+      const from = Math.max(t, schedule.until), to = Math.min(until, t + lookahead * rate);
+      if (from >= to) return;
+      // The output clock corresponds to the frame being heard. An output
+      // timestamp can be absent during startup or on a suspended device.
+      const stamp = ctx.getOutputTimestamp?.();
+      const outputNow = stamp?.performanceTime > 0
+        ? Math.min(now, stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000) : now;
+      const plan = race.plan[runner];
+      for (const event of hoofContacts(plan, runner + 1, from, to)) {
+        const strength = launchWeight(distance(plan, event.time)) * (rate > 1 ? 0.72 : 1);
+        strike(event, runner + 1, Math.max(now, outputNow + (event.time - t) / rate), strength);
+      }
+      schedule.until = to;
     },
     bell() {
-      if (enabled && !document.hidden)
-        for (const [dt, f] of [
-          [0, 720],
-          [0.13, 980],
-        ])
-          pulse(ctx.currentTime + dt, f, 0.22, 0.08, "sine", f * 0.96);
+      if (!enabled || ctx.state !== "running" || document.hidden) return;
+      for (const [delay, pitch] of [[0, 720], [0.13, 980]]) {
+        const when = ctx.currentTime + delay, source = ctx.createOscillator(), gain = ctx.createGain();
+        source.frequency.setValueAtTime(pitch, when);
+        source.frequency.exponentialRampToValueAtTime(pitch * 0.96, when + 0.22);
+        gain.gain.setValueAtTime(0.001, when);
+        gain.gain.exponentialRampToValueAtTime(0.08, when + 0.009);
+        gain.gain.exponentialRampToValueAtTime(0.001, when + 0.22);
+        play(source, gain, when, 0.23);
+      }
     },
   };
 }
