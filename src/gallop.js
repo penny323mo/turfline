@@ -210,7 +210,12 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     ];
     angles.forEach((target, i) => rotateWorld(joints[i], segments[i].restAngle - target));
     rotateWorld(joints.at(-1), roll);
-    return { y: path.y, z: soleZ };
+    // As the leg folds, the hoof swings clear of the passing leg. The offset
+    // and its velocity reach zero on both ends of the airborne interval.
+    const recovery = u < stance ? 0 : (u - stance) / (1 - stance);
+    const clearance = (front ? 0.033 : 0.052) * fold * (1 - 0.56 * collection) *
+      (1 + 0.22 * Math.cos(Math.PI * recovery));
+    return { x: leg.soleX + Math.sign(leg.soleX) * clearance, y: path.y, z: soleZ };
   }
 
   const times = [],
@@ -232,17 +237,21 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
     rotateWorld(root, pitch, false, motion.roll * balance);
     // The pelvis tucks under the body in the gathered phase. Transfer the
     // smaller motion along the back before solving either pair of legs.
-    const gather = Math.cos(a + 0.34);
-    [0.085 * gather, -0.063 * Math.cos(a + 0.12),
+    const flexion = 1 - 0.48 * collection;
+    [0.085 * Math.cos(a + 0.34), -0.063 * Math.cos(a + 0.12),
       -0.048 * Math.cos(a - 0.11), 0.029 * Math.cos(a - 0.36)].forEach((d, j) =>
-      rotateWorld(back[j], d, true, (motion.shoulderRoll - motion.roll) * balance / back.length),
+      rotateWorld(back[j], flexion * d, true, (motion.shoulderRoll - motion.roll) * balance / back.length),
     );
-    [0.16 + 0.077 * Math.sin(a - 0.48), 0.12 + 0.052 * Math.sin(a - 0.80),
-      0.035 + 0.031 * Math.sin(a - 1.14), -0.1 - 0.066 * Math.sin(a - 0.86)].forEach((d, j) =>
-      rotateWorld(neck[j], d, true),
+    // The neck stretches as the forehand takes weight. The poll follows the
+    // base of the neck, and the shorter gate and run-out steps carry less swing.
+    const foreLoad = Math.sin(a - turn * stanceStarts[3]);
+    const nod = 1 - 0.64 * collection;
+    [0.16 + nod * (0.077 * Math.sin(a - 0.48) + 0.019 * foreLoad), 0.12 + nod * 0.052 * Math.sin(a - 0.80),
+      0.035 + nod * 0.031 * Math.sin(a - 1.14), -0.1 - nod * 0.066 * Math.sin(a - 0.94)].forEach((d, j) =>
+      rotateWorld(neck[j], d * (1 - 0.24 * collection), true),
     );
     [0.49, 0.36, 0.2, 0.12, 0.06].forEach((d, j) =>
-      rotateWorld(tail[j], d + 0.058 * Math.sin(a - 0.5 * j), true, 0,
+      rotateWorld(tail[j], d * (1 - 0.42 * collection) + balance * 0.058 * Math.sin(a - 0.5 * j), true, 0,
         balance * (0.017 + 0.012 * j) * Math.sin(a - 0.55 * j)),
     );
     rig.updateMatrixWorld(true);
@@ -265,11 +274,11 @@ export function makeGallop(source, scale, ground, collection = 0, stride = strid
         z += MathUtils.clamp(target.z - point.z, -0.06, 0.06);
         swing(limb, phase, muzzleOffset, y, z);
       }
-      // Keep the sole in its own track as the torso shifts over the leg.
+      // Match lateral swing in flight and keep the planted sole on its track.
       const upper = limb.joints[0].bone;
       const hip = positionOf(upper);
       body.getVertexPosition(limb.sole, point).applyMatrix4(body.matrixWorld);
-      const correction = Math.atan2(limb.soleX - hip.x, hip.y - point.y) -
+      const correction = Math.atan2(target.x - hip.x, hip.y - point.y) -
         Math.atan2(point.x - hip.x, hip.y - point.y);
       upper.getWorldQuaternion(q).premultiply(bank.setFromAxisAngle(zAxis, correction));
       upper.parent.getWorldQuaternion(parentQ);

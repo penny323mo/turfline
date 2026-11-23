@@ -820,7 +820,7 @@ document.addEventListener("keydown", (e) => {
     /INPUT|SELECT/.test(e.target.tagName)
   )
     return;
-  if (!forceMap && /^[1-6]$/.test(e.key))
+  if (!forceMap && /^[1-7]$/.test(e.key))
     updateCamera(cameraState.selected, liveCameras[Number(e.key) - 1].id);
 });
 function dialog(title, html) {

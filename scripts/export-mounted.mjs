@@ -55,10 +55,49 @@ try {
       }
       const tracks = [];
       const varies = (values, width) => values.some((v, i) => Math.abs(v - values[i % width]) > 0.00001);
-      for (const { node, positions, rotations, morphs } of states) {
-        if (varies(positions, 3)) tracks.push(new THREE.VectorKeyframeTrack(node.name + ".position", times, positions));
-        if (varies(rotations, 4)) tracks.push(new THREE.QuaternionKeyframeTrack(node.name + ".quaternion", times, rotations));
-        if (varies(morphs, 1)) tracks.push(new THREE.NumberKeyframeTrack(node.name + ".morphTargetInfluences", times, morphs));
+      // Bake rapid impact and rein changes densely, then keep only keys whose
+      // omission would move a joint beyond the position or angular tolerance.
+      function add(name,values,width,Type) {
+        if (!varies(values,width)) return;
+        const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(), expect = new THREE.Quaternion();
+        const keep = [0], limit = width === 4 ? 0.00032 : 0.00012;
+        function reduce(first,last) {
+          let worst = limit, split;
+          if (width === 4) {
+            q0.fromArray(values,4*first);
+            q1.fromArray(values,4*last);
+          }
+          for (let j=first+1; j<last; j++) {
+            const alpha = (j-first)/(last-first);
+            let error = 0;
+            if (width === 4) {
+              expect.slerpQuaternions(q0,q1,alpha);
+              const dot = expect.x*values[4*j] + expect.y*values[4*j+1] +
+                expect.z*values[4*j+2] + expect.w*values[4*j+3];
+              error = 2*Math.acos(Math.min(1,Math.abs(dot)));
+            } else {
+              for (let k=0; k<width; k++) {
+                const delta = values[width*j+k] - THREE.MathUtils.lerp(values[width*first+k],values[width*last+k],alpha);
+                error += delta*delta;
+              }
+              error = Math.sqrt(error);
+            }
+            if (error>worst) { worst=error; split=j; }
+          }
+          if (split !== undefined) {
+            reduce(first,split);
+            keep.push(split);
+            reduce(split,last);
+          }
+        }
+        reduce(0,segments);
+        keep.push(segments);
+        tracks.push(new Type(name,keep.map(i=>times[i]),keep.flatMap(i=>values.slice(width*i,width*(i+1)))));
+      }
+      for (const {node,positions,rotations,morphs} of states) {
+        add(node.name+".position",positions,3,THREE.VectorKeyframeTrack);
+        add(node.name+".quaternion",rotations,4,THREE.QuaternionKeyframeTrack);
+        add(node.name+".morphTargetInfluences",morphs,1,THREE.NumberKeyframeTrack);
       }
       return new THREE.AnimationClip(name, duration, tracks).optimize();
     }
@@ -68,8 +107,8 @@ try {
     const period = strideLength(1) / 16;
     const clips = [
       bake("Gallop", period, 360, t => actor.seek(t === period ? 0 : t, true, 16)),
-      bake("GateBreak", 2.5, 600, sampleRace),
-      bake("PullUp", RUN_OUT_SECONDS, RUN_OUT_SECONDS * 240, t => sampleRace(plan.finish + t)),
+      bake("GateBreak", 2.5, 2400, sampleRace),
+      bake("PullUp", RUN_OUT_SECONDS, RUN_OUT_SECONDS * 960, t => sampleRace(plan.finish + t)),
     ];
     actor.seek(0);
     model.updateMatrixWorld(true);
@@ -80,7 +119,7 @@ try {
         title: "Crimson Comet — mounted racehorse", horseAuthor: "Ayan",
         horseSource: "https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318",
         horseLicense: "https://creativecommons.org/licenses/by/4.0/",
-        adaptation: "Turfline racing tack, colours, jockey and in-place gallop, gate break and pull-up. Metres, positive Z forward.",
+        adaptation: "Turfline racing saddle, twin reins, articulated jockey, colours, gallop, gate break and pull-up. Metres, positive Z forward.",
       };
     } }));
     const bytes = new Uint8Array(await exporter.parseAsync(model, { binary: true, animations: clips }));

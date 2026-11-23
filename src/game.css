@@ -861,7 +861,7 @@
 }
 @media (max-width: 1120px) {
   .arcade .live-controls { flex-wrap: wrap; gap: 6px; }
-  .arcade .camera-switch { flex: 1 1 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .arcade .camera-switch { flex: 1 1 100%; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .arcade .camera-switch button { justify-content: center; min-height: 35px; }
   .arcade .camera-switch[hidden] + .quick-focus { margin-left: 0; }
 }
@@ -872,7 +872,7 @@
   .stage:is(:fullscreen, .expanded) .order-strip { top: 66px; width: min(94%, 440px); }
 }
 @media (max-width: 450px) {
-  .arcade .camera-switch { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .arcade .camera-switch { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .arcade .camera-switch button { font-size: 11px; min-height: 40px; padding-inline: 2px; }
   .arcade .live-controls .quick-focus, .arcade .live-controls .sounds { min-height: 32px; }
 }

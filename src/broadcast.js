@@ -1,4 +1,4 @@
-import { cameras, horses } from "./data.js";
+import { cameras, horses, riderCamera } from "./data.js";
 import { distance, LENGTH, RUN_OUT_SECONDS } from "./race.js";
 import { coursePoint } from "./course.js";
 import { linePose } from "./racing-line.js";
@@ -7,6 +7,7 @@ export const liveCameras = [...cameras,
   { id: "pack", name: "全場廣角", en: "FIELD WIDE", icon: "expand" },
   { id: "auto", name: "自動導播", en: "DIRECTOR", icon: "broadcast" },
   { id: "radar", name: "走位圖", en: "RACE RADAR", icon: "focus" },
+  riderCamera,
 ];
 const viewKey = "turfline.spectator-view";
 

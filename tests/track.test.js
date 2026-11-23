@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { AnimationMixer, Box3, Group, Vector3 } from "three";
+import { AnimationMixer, Box3, Group, Quaternion, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
+import { strideLength } from "../src/stride.js";
 import { hoofContacts } from "../src/race-audio.js";
 import { newGame, start, distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
 import { bendEntry, bendExit, bendLean, coursePoint, laneTravel } from "../src/course.js";
@@ -183,6 +184,85 @@ test("the inside and outside runners lean into the bend with four grounded suppo
   }
 });
 
+function skinPoint(mesh,vertex) {
+  return mesh.getVertexPosition(vertex,new Vector3()).applyMatrix4(mesh.matrixWorld);
+}
+
+// Opposite vertices of the rigid glove ellipsoid give its visible centre.
+function gloveEnds(jacket,side) {
+  const joint = jacket.skeleton.bones.findIndex(b => b.name === "Jockey"+side+"Hand");
+  const {skinIndex,position} = jacket.geometry.attributes;
+  let min, max;
+  for (let i=0; i<position.count; i++) if (skinIndex.getX(i) === joint) {
+    if (min === undefined || position.getX(i) < position.getX(min)) min = i;
+    if (max === undefined || position.getX(i) > position.getX(max)) max = i;
+  }
+  assert.notEqual(min,max);
+  return [min,max];
+}
+
+test("airborne hooves swing clear, planted hooves track straight and the rider steadies their head", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const horse = makeAyanHorse(horses[0]), group = horse.group;
+  const soles = [14273,12585,13645,11901], body = group.getObjectByName("Object_11");
+  const all = soles.map(() => []), ground = soles.map(() => []);
+  const head = [], chest = [], q = new Quaternion();
+  const span = values => Math.max(...values) - Math.min(...values);
+  for (let i=0; i<200; i++) {
+    horse.seek(i*strideLength(1)/(16*200),true,16);
+    group.updateMatrixWorld(true);
+    for (const [j,index] of soles.entries()) {
+      const p = skinPoint(body,index);
+      all[j].push(p.x);
+      if (p.y < 0.015) ground[j].push(p.x);
+    }
+    for (const [joint,angles] of [["JockeyChest",chest],["JockeyHead",head]]) {
+      group.getObjectByName(joint).getWorldQuaternion(q);
+      angles.push(Math.asin(new Vector3(0,0,1).applyQuaternion(q).y));
+    }
+  }
+  for (const [i,travel] of all.entries()) {
+    assert.ok(span(travel) > (i<2 ? 0.045 : 0.027));
+    assert.ok(ground[i].length > 20 && span(ground[i]) < 0.002);
+  }
+  assert.ok(span(head) > 0.04 && span(head) < 0.6*span(chest));
+});
+
+test("both visible reins meet each palm and bit as all six riders bend their elbows", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64,"+bytes.toString("base64"));
+  for (const spec of horses) {
+    const actor = makeAyanHorse(spec), group = actor.group;
+    const reins = group.getObjectByName("RacingReins"), jacket = group.getObjectByName("JockeyUpperBody");
+    const sides = ["Right","Left"].map((side,i) => ({
+      side, indices: gloveEnds(jacket,side), start: i*(9*8 + 9*25),
+      cheek: group.getObjectByName(i ? "Object_13" : "Object_15"), vertex: i ? 103 : 184, angles: [],
+    }));
+    for (let i=0; i<=100; i++) {
+      const fraction = ((i*37)%101)/100;
+      for (const d of [fraction*3, 440+8*fraction, 1200-fraction*3]) {
+        actor.seekDistance(d,d>0,1200,d>400 && d<500 ? 0.16 : 0);
+        group.updateMatrixWorld(true);
+        for (const {side,indices,start,cheek,vertex,angles} of sides) {
+          const palm = skinPoint(jacket,indices[0]).lerp(skinPoint(jacket,indices[1]),0.5);
+          const middle = offset => skinPoint(reins,start+offset).lerp(skinPoint(reins,start+offset+4),0.5);
+          assert.ok(palm.distanceTo(middle(0)) < 0.001);
+          const ring = offset => skinPoint(reins,start+72+offset).lerp(skinPoint(reins,start+72+100+offset),0.5);
+          assert.ok(middle(64).distanceTo(ring(0)) < 0.001);
+          assert.ok(skinPoint(cheek,vertex).distanceTo(ring(6)) < 0.003);
+          if (d>400 && d<500) {
+            const joint = name => group.getObjectByName("Jockey"+side+name).getWorldPosition(new Vector3());
+            const elbow = joint("Elbow");
+            angles.push(joint("Shoulder").sub(elbow).angleTo(palm.sub(elbow)));
+          }
+        }
+      }
+    }
+    for (const {angles} of sides) assert.ok(Math.max(...angles)-Math.min(...angles) > Math.PI/18);
+  }
+});
+
 test("mounted download reproduces the in-game hooves, nose and jockey when sampled out of order", async () => {
   const bytes = await asset("horse-ayan.glb"), mounted = await asset("horse-ayan-mounted.glb");
   await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
@@ -195,7 +275,15 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
   function samples(group) {
     const body = group.getObjectByName("Object_11");
     const points = [11901,13645,12585,14273,3998].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
-    return [...points, group.getObjectByName("JockeyWaist").getWorldPosition(new Vector3())];
+    const jacket = group.getObjectByName("JockeyUpperBody"), reins = group.getObjectByName("RacingReins");
+    for (const side of ["Right","Left"]) {
+      const wrist = jacket.skeleton.bones.findIndex(b => b.name === "Jockey"+side+"Hand");
+      points.push(skinPoint(jacket,jacket.geometry.attributes.skinIndex.array.indexOf(wrist)/4));
+    }
+    const head = jacket.skeleton.bones.findIndex(b => b.name === "JockeyHead");
+    points.push(skinPoint(jacket,jacket.geometry.attributes.skinIndex.array.indexOf(head)/4));
+    return [...points, ...[0,35,64,78,297,332,361,375].map(i => skinPoint(reins,i)),
+      group.getObjectByName("JockeyWaist").getWorldPosition(new Vector3())];
   }
   for (let i=0; i<73; i++) {
     const t = clip.duration * ((i * 37) % 73) / 73;
@@ -207,8 +295,6 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
     actual.forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002));
     assert.ok(Math.abs(runner.group.getObjectByName("JockeyLegs").morphTargetInfluences[0]
       - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
-    assert.ok(Math.abs(runner.group.getObjectByName("JockeyUpperBody").morphTargetInfluences[0]
-      - baked.scene.getObjectByName("JockeyUpperBody").morphTargetInfluences[0]) < 0.001);
   }
   const plan = { finish: 68, early: 0.008, surge: 0.006 }, lane = laneX(0);
   for (const [name, start] of [["GateBreak", 0], ["PullUp", plan.finish]]) {
@@ -224,7 +310,8 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
       runner.group.updateMatrixWorld(true);
       baked.scene.updateMatrixWorld(true);
       const exported = samples(baked.scene);
-      samples(runner.group).forEach((p, j) => assert.ok(p.distanceTo(exported[j]) < 0.004));
+      samples(runner.group).forEach((p, j) => assert.ok(p.distanceTo(exported[j]) < 0.004,
+        name+" at "+t.toFixed(4)+"s, landmark "+j+" differs by "+p.distanceTo(exported[j]).toFixed(5)+"m"));
     }
   }
 });

@@ -138,6 +138,7 @@ try {
   for (const [cam, num] of [
     ["radar", 3],
     ["pack", 5],
+    ["rider", 2],
     ["aerial", 3],
     ["tele", 6],
     ["track", 2],

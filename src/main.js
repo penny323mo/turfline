@@ -1,5 +1,5 @@
 import { startStage } from "./stage.js";
-import { horses, cameras, venues, duration } from "./data.js";
+import { horses, cameras as fieldCameras, riderCamera, venues, duration } from "./data.js";
 import { icon, silk } from "./icons.js";
 import { loadHorse, makeHorse } from "./horse.js";
 
@@ -7,9 +7,11 @@ import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
+const cameras = [...fieldCameras, riderCamera];
+const view = new URLSearchParams(location.search).get("view");
 const state = {
   selected: 0,
-  cam: "track",
+  cam: cameras.find(c => c.id === view)?.id ?? "track",
   time: 0.65,
   speed: 1,
   paused: false,
@@ -127,6 +129,8 @@ const libraryCards = [
     image: "rider",
     text: "本作製作騎師、頭盔、護目鏡、綵衣及號布，按馬背位置安裝。每組綵衣用獨立顏色辨認。",
     links: [
+      ["睇 6 號馬騎姿慢鏡", "./views/rider-follow.mp4"],
+      ["睇騎姿同韁繩近鏡", "./studio.html?view=rider"],
       ["Ayan 連騎師 GLB", "./models/horse-ayan-mounted.glb"],
       ["2K 版連騎師 GLB", "./models/horse-ranch-mounted.glb"],
       ["低面數版連騎師 GLB", "./models/horse-mounted.glb"],
@@ -188,7 +192,7 @@ $("compare").innerHTML = comparisons
       '<button class="compare-card" data-model-key="' +
       c.id +
       '"><img src="' +
-      thumb(c.id) +
+      thumb(c.id === "rider" ? "rider-view" : c.id) +
       '" alt="' +
       c.name +
       '側面"><span><strong>' +
@@ -358,7 +362,7 @@ document.addEventListener("keydown", (e) => {
     /SELECT|INPUT|TEXTAREA/.test(e.target.tagName)
   )
     return;
-  if (["1", "2", "3"].includes(e.key)) {
+  if (["1", "2", "3", "4"].includes(e.key)) {
     e.preventDefault();
     camera(cameras[Number(e.key) - 1].id);
   }
@@ -457,7 +461,7 @@ async function init() {
   }
 }
 for (const c of cameras) {
-  const url = new URL(thumb(c.id), document.baseURI).href;
+  const url = new URL(thumb(c.id === "rider" ? "rider-view" : c.id), document.baseURI).href;
   document
     .querySelector('[data-cam="' + c.id + '"]')
     .style.setProperty("--pic", 'url("' + url + '")');

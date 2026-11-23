@@ -1,3 +1,4 @@
+import { skinJockey } from './jockey.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
@@ -87,11 +88,11 @@ function numberPlate(number, color) {
   return material;
 }
 
-export function makeRacingTack(spec) {
+export function makeRacingTack(spec, articulated = false) {
   const tack = new THREE.Group();
   const shape = sculpt();
   const jacket = sculpt();
-  const sleeves = [];
+  const sleeves = [], headRanges = [];
   const legs = sculpt();
   const accent = spec.color;
   const skin = ['#e1a47f', '#b77f5e', '#d69971'][((spec.number || 1) - 1) % 3];
@@ -126,6 +127,7 @@ export function makeRacingTack(spec) {
   jacket.limb([0,1.904,0.063], [0,1.93,0.093], 0.128, 0.128, white, 1.40);
   jacket.joint([0,2.052,0.223], [0.181,0.105,0.127], accent);
   jacket.limb([0,2.072,0.268], [0,2.122,0.305], 0.088, 0.065, white);
+  const headStart = jacket.vertexCount;
   jacket.limb([0,2.094,0.289], [0,2.162,0.342], 0.069, 0.061, skin);
   jacket.joint([0,2.206,0.363], [0.102,0.133,0.105], skin, true);
   jacket.joint([0,2.182,0.455], [0.022,0.027,0.039], skin);
@@ -134,13 +136,16 @@ export function makeRacingTack(spec) {
   jacket.joint([0,2.275,0.355], [0.118,0.092,0.124], accent, true);
   jacket.joint([0,2.267,0.438], [0.116,0.021,0.092], '#282723', true);
   jacket.joint([0,2.359,0.348], [0.028,0.015,0.028], white);
+  headRanges.push([headStart, jacket.vertexCount]);
   for (const side of [-1, 1]) {
+    const eyewearStart = jacket.vertexCount;
     jacket.limb([side*.102,2.238,.358],[side*.083,2.16,.384],.007,.007,'#332c29');
     jacket.limb([side*.083,2.16,.384],[side*.025,2.102,.398],.007,.007,'#332c29');
     jacket.joint([side*0.092,2.197,0.344], [0.023,0.037,0.022], skin);
     jacket.joint([side*0.052,2.224,0.449], [0.052,0.032,0.033], '#262c2f');
     jacket.joint([side*0.052,2.228,0.468], [0.039,0.019,0.017], '#65747b');
     jacket.joint([side*.057,2.234,.481], [.027,.003,.003], '#bdc6c7');
+    headRanges.push([eyewearStart, jacket.vertexCount]);
     const hip = [side*0.125,1.75,-0.105];
     const knee = [side*0.294,1.422,0.215];
     const ankle = [side*0.312,1.113,-0.06];
@@ -160,36 +165,28 @@ export function makeRacingTack(spec) {
     jacket.joint(shoulder,[0.069,0.068,0.078],accent);
     jacket.limb(shoulder, elbow, 0.065, 0.052, accent);
     jacket.limb([side*0.174,1.990,0.24],[side*0.184,1.966,0.257],0.067,0.065,white);
+    const elbowStart = jacket.vertexCount;
     jacket.joint(elbow,[0.052,0.052,0.054],accent);
     jacket.limb(elbow, hand, 0.05, 0.032, accent);
     jacket.limb([side*0.155,1.88,0.495], hand,0.037,0.033,white);
+    const gloveStart = jacket.vertexCount;
     jacket.joint(hand,[0.037,0.036,0.059],'#372d28');
-    sleeves.push([sleeveStart, jacket.vertexCount]);
+    sleeves.push({ side, shoulder, elbow, hand, start: sleeveStart, elbowStart, gloveStart, end: jacket.vertexCount });
   }
+  const helmetStart = jacket.vertexCount;
   // Two narrow stripes follow the helmet dome from nape to peak.
   for (const side of [-1,1]) {
     const points = [[side*0.025,2.296,0.244],[side*0.026,2.339,0.286],
       [side*0.027,2.358,0.349],[side*0.027,2.346,0.415],[side*0.025,2.302,0.463]];
     for (let i=1;i<points.length;i++) jacket.limb(points[i-1],points[i],0.009,0.009,white);
   }
+  headRanges.push([helmetStart, jacket.vertexCount]);
   const waist = new THREE.Group();
   waist.name = 'JockeyWaist';
   waist.position.set(0,1.78,-0.10);
-  const upperBody = jacket.finish();
-  const upperPositions = upperBody.geometry.attributes.position;
-  const reach = new Float32Array(upperPositions.count * 3);
-  for (const [start, end] of sleeves) {
-    for (let i = start; i < end; i++) {
-      const z = upperPositions.getZ(i);
-      const elbow = THREE.MathUtils.smoothstep(z, 0.203, 0.301);
-      const hand = THREE.MathUtils.smoothstep(z, 0.301, 0.536);
-      reach[i * 3 + 1] = 0.022 * elbow - 0.058 * hand;
-      reach[i * 3 + 2] = 0.041 * elbow + 0.033 * hand;
-    }
-  }
-  upperBody.geometry.morphTargetsRelative = true;
-  upperBody.geometry.morphAttributes.position = [new THREE.BufferAttribute(reach, 3)];
-  upperBody.updateMorphTargets();
+  const jacketMesh = jacket.finish();
+  const rider = articulated ? skinJockey(jacketMesh, sleeves, headRanges) : null;
+  const upperBody = rider?.mesh ?? jacketMesh;
   upperBody.name = 'JockeyUpperBody';
   upperBody.position.copy(waist.position).multiplyScalar(-1);
   waist.add(upperBody);
@@ -205,7 +202,7 @@ export function makeRacingTack(spec) {
   breeches.geometry.morphAttributes.position = [new THREE.BufferAttribute(delta,3)];
   breeches.updateMorphTargets();
   tack.add(shape.finish(), breeches, waist);
-  return { tack, waist, upperBody, breeches };
+  return { tack, waist, upperBody, breeches, rider };
 }
 
 function makeBridle(detailed) {

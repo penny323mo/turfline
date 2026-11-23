@@ -4,6 +4,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { makeRacingTack } from './horse.js';
 import { bodyMotion, limbs, makeGallop, muzzleVertices, soleVertices } from './gallop.js';
 import { raceStride, strideCount, strideLength } from './stride.js';
+import { fitRacingReins } from './racing-reins.js';
 import { hoofPlant } from './hoof-plant.js';
 
 const SCALE = 0.444;
@@ -81,19 +82,21 @@ export function makeAyanHorse(spec) {
     object.castShadow = object.receiveShadow = true;
     if (object.isSkinnedMesh) object.frustumCulled = false;
   });
-  // Replace the source's overlapping western saddle and projecting saddle bag
-  // with the fitted racing saddle and number cloth. Keep Ayan's original bridle.
+  // Keep Ayan's headcollar and cheekpieces. Fit the racing saddle, number
+  // cloth and hand-held reins in place of the western tack.
   horse.getObjectByName('Object_7').visible = false;
   horse.getObjectByName('Object_9').visible = false;
+  horse.getObjectByName('Object_17').visible = false;
   horse.rotation.y = Math.PI / 2;
   horse.scale.setScalar(SCALE);
   horse.position.y = REST_GROUND * SCALE;
-  const { tack, waist, upperBody, breeches } = makeRacingTack(spec);
+  const { tack, waist, rider, breeches } = makeRacingTack(spec,true);
   tack.scale.set(1.025, 1, 1.02);
   tack.position.set(0,0.044,-0.05);
   mount.add(tack);
   group.updateMatrixWorld(true);
   horse.getObjectByName('spine008_50').attach(tack);
+  const followMouth = fitRacingReins(mount,body,rider);
   const restPoint = new THREE.Vector3();
   const restNose = Math.max(...muzzleVertices.map(v =>
     body.getVertexPosition(v, restPoint).applyMatrix4(body.matrixWorld).z));
@@ -128,7 +131,6 @@ export function makeAyanHorse(spec) {
     waist.position.z = -0.10 - 0.30 * lift;
     waist.rotation.x = weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
     waist.rotation.z = -0.6 * shoulderRoll * weight * (1 - 0.64 * short);
-    upperBody.morphTargetInfluences[0] = weight * (1 - 0.55 * short) * (0.5 + 0.5 * Math.sin(a - 0.62));
   }
   function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0) {
     travelled = distance;
@@ -147,6 +149,7 @@ export function makeAyanHorse(spec) {
     // The boots stay in the irons as the shoulders turn into the running line.
     waist.rotation.z += lean * 0.24;
     waist.rotation.y = -lean * 0.39;
+    followMouth(weight);
   }
   function seekDistance(distance, running, stop, lean = 0, curvature = 0) {
     const step = raceStride(spec.number, distance, stop);

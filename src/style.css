@@ -752,6 +752,7 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
+.camera-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cam-card {
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1182,6 +1183,7 @@ dialog li span {
   .field-note {
     padding: 5px 11px;
   }
+  .camera-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .camera-grid,
   .venues {
     gap: 7px;

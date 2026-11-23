@@ -287,6 +287,17 @@ export async function startStage(canvas, state, refresh) {
         look.lerp(new THREE.Vector3(focus.x * 0.68, 1.5, -0.7), gateView);
         fov += 8 * gateView;
       }
+    } else if (shot === "rider") {
+      const side = race && z > 18 ? tracksideSide(race.plan,state.selected,race.t,screenWidthBias) : -1;
+      if (side !== lastTrackSide) cut = true;
+      lastTrackSide = side;
+      const width = Math.max(1,0.95/camera.aspect);
+      look.copy(focus);
+      look.x -= 1.60 * Math.tan(field[state.selected].lean);
+      look.y += 1.63;
+      look.z += 0.58;
+      eye.set(look.x+side*2.45*width,look.y+0.58*width,look.z+0.70*width);
+      fov = 35;
     } else if (shot === "aerial") {
       eye
         .copy(focus)
@@ -352,7 +363,7 @@ export async function startStage(canvas, state, refresh) {
     sun.target.position.copy(aim);
     const marker = document.getElementById("tracking-mark");
     if (marker) {
-      marker.hidden = Boolean(venue) || shot === "track";
+      marker.hidden = Boolean(venue) || shot === "track" || shot === "rider";
       if (!marker.hidden) {
         const pt = runnerPositions[state.selected].clone();
         pt.y = 2.8;

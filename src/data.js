@@ -77,6 +77,10 @@ export const cameras = [
     desc: "長焦追蹤馬群的正面動態",
   },
 ];
+export const riderCamera = {
+  id: "rider", name: "騎姿近鏡", en: "RIDER CLOSE-UP", icon: "camera",
+  desc: "近看騎師雙手如何跟隨馬頸起伏",
+};
 export const venues = [
   { id: "overview", name: "馬場全景", en: "COURSE OVERVIEW" },
   { id: "gate", name: "起步馬閘", en: "STARTING GATE" },
