@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hoofContacts, raceAudio } from "../src/race-audio.js";
-import { distance, newGame, start } from "../src/race.js";
-import { stanceStarts, strideCount } from "../src/stride.js";
+import { distance, newGame, RUN_OUT_SECONDS, start, stopDistance } from "../src/race.js";
+import { raceStride, stanceStarts } from "../src/stride.js";
 import { laneTravel } from "../src/course.js";
 import { laneX } from "../src/data.js";
 
@@ -10,15 +10,17 @@ test("four-beat sound follows each runner through the break, the finish and adjo
   const game = newGame(() => 0.47);
   start(game, 0, () => 0.47);
   game.race.plan.forEach((horse, i) => {
-    const number = i + 1, stop = horse.finish + 2;
+    const number = i + 1, stop = horse.finish + RUN_OUT_SECONDS;
     const events = hoofContacts(horse, number, -1, stop);
     assert.deepEqual(hoofContacts(horse, number, -3, 0), []);
     assert.deepEqual(hoofContacts(horse, number, stop, stop + 1), []);
     assert.ok(events.length > 600);
     for (const [j, event] of events.entries()) {
-      assert.ok(event.time > 0 && event.time <= horse.finish + 22 / 17);
+      assert.ok(event.time > 0 && event.time <= stop);
       if (j) assert.equal(event.hoof, (events[j - 1].hoof + 1) % 4);
-      const phase = strideCount(number, laneTravel(distance(horse, event.time), laneX(i))) - event.stride;
+      const offset = laneX(i);
+      const phase = raceStride(number, laneTravel(distance(horse, event.time), offset),
+        laneTravel(stopDistance(horse), offset)).count - event.stride;
       assert.ok(Math.abs(phase - stanceStarts[event.hoof]) < 0.034);
     }
     const windows = [];

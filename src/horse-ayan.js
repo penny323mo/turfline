@@ -2,20 +2,14 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { makeRacingTack } from './horse.js';
-import { bodyMotion, makeGallop } from './gallop.js';
-import { launchWeight, strideCount } from './stride.js';
+import { bodyMotion, makeGallop, soleVertices } from './gallop.js';
+import { raceStride, strideCount } from './stride.js';
 
 const SCALE = 0.444;
 const REST_GROUND = 2.217;
 let assetPromise;
 let asset;
 
-// Extremal skinned vertices sampled across the gallop and the gate transition.
-const soleVertices = [
-  202, 210, 1135, 1143, 2355, 2607, 3273, 3281, 4524, 4573, 4575,
-  4584, 4974, 6138, 6145, 6168, 6174, 8416, 8804, 9938, 9945, 9967,
-  9973, 11901, 12585, 13645, 14273,
-];
 const muzzleVertices = [1879, 1970, 3998, 4087, 7524, 7733, 11244, 11446];
 
 export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', document.baseURI).href) {
@@ -27,7 +21,8 @@ export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', docum
       const rest = new THREE.AnimationMixer(gltf.scene);
       rest.clipAction(stride).play();
       rest.setTime(0);
-      asset = { scene: gltf.scene, stride: makeGallop(gltf.scene, SCALE, REST_GROUND) };
+      const clips = [0, 0.25, 0.5, 0.75, 1].map(w => makeGallop(gltf.scene, SCALE, REST_GROUND, w));
+      asset = { scene: gltf.scene, stride: clips[0], clips };
       return asset;
     }).catch(error => {
       assetPromise = undefined;
@@ -71,8 +66,7 @@ export function makeAyanHorse(spec) {
   mount.add(horse);
   group.add(mount);
   const mixer = new THREE.AnimationMixer(horse);
-  const stride = mixer.clipAction(asset.stride).play();
-  stride.weight = 0;
+  const strides = asset.clips.map(clip => mixer.clipAction(clip));
   mixer.update(0);
   horse.updateMatrixWorld(true);
   const body = horse.getObjectByName('Object_11');
@@ -98,7 +92,7 @@ export function makeAyanHorse(spec) {
   let travelled = 0;
   const bodyToMount = new THREE.Matrix4(), contact = new THREE.Vector3();
   let noseLead = 0;
-  function placeRider(phase, weight) {
+  function placeRider(phase, weight, short) {
     // SkinnedMesh refreshes its bind inverse in updateMatrixWorld. Start each
     // solve from the same mount origin so scrubbing also works between renders.
     mount.position.y = 0;
@@ -119,22 +113,30 @@ export function makeAyanHorse(spec) {
     }
     const {heave, pitch} = bodyMotion(phase);
     const a = phase * Math.PI * 2;
-    const lift = weight * (0.055 - 0.72 * (heave + 0.155) + 0.009 * Math.sin(a - 0.65));
+    const lift = weight * (1 - 0.58 * short) * (0.055 - 0.72 * (heave + 0.155) + 0.009 * Math.sin(a - 0.65));
     breeches.morphTargetInfluences[0] = lift / 0.12;
     waist.position.y = 1.78 + lift;
     waist.position.z = -0.10 - 0.30 * lift;
-    waist.rotation.x = weight * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
-    upperBody.morphTargetInfluences[0] = weight * (0.5 + 0.5 * Math.sin(a - 0.62));
+    waist.rotation.x = weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
+    upperBody.morphTargetInfluences[0] = weight * (1 - 0.55 * short) * (0.5 + 0.5 * Math.sin(a - 0.62));
   }
-  function pose(distance, weight) {
+  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0) {
     travelled = distance;
-    const phase = THREE.MathUtils.euclideanModulo(strideCount(spec.number, distance), 1);
-    stride.weight = weight;
+    const phase = THREE.MathUtils.euclideanModulo(count, 1);
+    // Interpolate adjacent IK solutions. Blending the two extremes lifts the
+    // planted forefoot off the turf as the stride length changes.
+    const sample = short * (strides.length - 1);
+    for (const [i, action] of strides.entries()) {
+      action.weight = weight * Math.max(0, 1 - Math.abs(i - sample));
+      if (action.weight > 0) action.play();
+      action.enabled = action.weight > 0;
+    }
     mixer.setTime(phase);
-    placeRider(phase, weight);
+    placeRider(phase, weight, short);
   }
-  function seekDistance(distance, running) {
-    pose(distance, running ? launchWeight(distance) : 0);
+  function seekDistance(distance, running, stop) {
+    const step = raceStride(spec.number, distance, stop);
+    pose(distance, running ? step.weight : 0, step.count, step.short);
   }
   function seek(time, running = false, speed = 0) {
     pose(running ? time * speed : 0, running ? 1 : 0);

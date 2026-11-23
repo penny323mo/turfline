@@ -786,7 +786,7 @@
   color: #edf2e6;
 }
 .replay-clock { display: grid; gap: 1px; }
-.replay-clock b { color: #eac982; font-size: 11px; letter-spacing: .06em; }
+.replay-clock select { color: #f0d197; background: #283229; border: 1px solid #56624d; border-radius: 4px; padding: 4px; font: inherit; font-size: 12px; }
 .replay-clock output { font: 600 15px var(--display); font-variant-numeric: tabular-nums; }
 #replay-scrub { width: 100%; margin: 0; accent-color: #e5c47f; min-height: 30px; }
 .replay-keys { display: flex; flex-wrap: wrap; gap: 5px; }

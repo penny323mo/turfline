@@ -5,7 +5,7 @@ import { AnimationMixer, Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { laneX, horses } from "../src/data.js";
 import { hoofContacts } from "../src/race-audio.js";
-import { distance } from "../src/race.js";
+import { distance, RUN_OUT_SECONDS, stopDistance } from "../src/race.js";
 import { bendEntry, bendExit, bendLean, coursePoint, laneTravel } from "../src/course.js";
 import { attachStartingStalls } from "../src/landscape.js";
 import { placeRunnerFrame } from "../src/stage.js";
@@ -184,6 +184,23 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
     assert.ok(Math.abs(runner.group.getObjectByName("JockeyUpperBody").morphTargetInfluences[0]
       - baked.scene.getObjectByName("JockeyUpperBody").morphTargetInfluences[0]) < 0.001);
   }
+  const plan = { finish: 68, early: 0.008, surge: 0.006 }, lane = laneX(0);
+  for (const [name, start] of [["GateBreak", 0], ["PullUp", plan.finish]]) {
+    const transition = baked.animations.find(a => a.name === name);
+    assert.equal(transition.duration, name === "GateBreak" ? 2.5 : RUN_OUT_SECONDS);
+    playback.stopAllAction();
+    playback.clipAction(transition).reset().play();
+    for (let i = 0; i < 73; i++) {
+      const t = transition.duration * ((31 * i) % 73) / 73;
+      runner.seekDistance(laneTravel(distance(plan, t + start), lane), t + start > 0,
+        laneTravel(stopDistance(plan), lane));
+      playback.setTime(t);
+      runner.group.updateMatrixWorld(true);
+      baked.scene.updateMatrixWorld(true);
+      const exported = samples(baked.scene);
+      samples(runner.group).forEach((p, j) => assert.ok(p.distanceTo(exported[j]) < 0.004));
+    }
+  }
 });
 
 test("audible strikes coincide with the first descent to turf of the corresponding skinned hoof", async () => {
@@ -204,5 +221,32 @@ test("audible strikes coincide with the first descent to turf of the correspondi
       assert.ok(contact >= -0.003 && contact < 0.02);
       assert.ok(height(time - 0.020, hoof) > contact + 0.02);
     }
+  }
+});
+
+test("all six shorten their steps at the break and return all four soles to turf at a halt", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const soles = [14273, 12585, 13645, 11901];
+  for (const spec of horses) {
+    const plan = { finish: 68, early: 0.008, surge: 0.006 };
+    const actor = makeAyanHorse(spec), mesh = actor.group.getObjectByName("Object_11");
+    const lane = laneX(spec.number - 1), stop = laneTravel(stopDistance(plan), lane);
+    function sample(t) {
+      actor.seekDistance(laneTravel(distance(plan, t), lane), t > 0, stop);
+      actor.group.updateMatrixWorld(true);
+      return soles.map(v => mesh.getVertexPosition(v, new Vector3()).applyMatrix4(mesh.matrixWorld));
+    }
+    const rest = sample(0), after = sample(plan.finish + 4);
+    assert.ok(after.some((p, i) => p.distanceTo(rest[i]) > 0.1));
+    for (const [from, to] of [[0, 2.5], [plan.finish + 4, plan.finish + RUN_OUT_SECONDS]]) {
+      const impacts = hoofContacts(plan, spec.number, from, to);
+      assert.equal(new Set(impacts.map(e => e.hoof)).size, 4);
+      for (const e of impacts) assert.ok(Math.abs(sample(e.time)[e.hoof].y) < 0.02);
+    }
+    const halt = sample(plan.finish + RUN_OUT_SECONDS);
+    halt.forEach((p, i) => assert.ok(p.y < 0.006 && p.distanceTo(rest[i]) < 0.00001));
+    const repeat = sample(plan.finish + 4);
+    after.forEach((p, i) => assert.ok(p.distanceTo(repeat[i]) < 0.00001));
   }
 });

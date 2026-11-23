@@ -1,9 +1,11 @@
+import { GATES, runOutEnd } from "./race.js";
+
 // The playback clock only reads the sealed race plan. Each viewer can pause or
 // seek without changing the official clock, the wallet, or another tab.
-export function finishReplay(race, clock = () => performance.now() / 1000) {
+export function finishReplay(race, clock = () => performance.now() / 1000, scope = "finish") {
   const winnerTime = race.plan[race.settlement.order[0]].finish;
-  const from = Math.max(0, winnerTime - 4.5);
-  const to = Math.max(...race.plan.map((runner) => runner.finish)) + 0.65;
+  const from = scope === "full" ? -GATES : scope === "pullup" ? winnerTime : Math.max(0, winnerTime - 4.5);
+  const to = scope === "finish" ? Math.max(...race.plan.map((runner) => runner.finish)) + 0.65 : runOutEnd(race);
   let cursor = from, anchor = clock(), moving = true, rate = 0.5;
   const position = () => Math.min(to, cursor + (moving ? Math.max(0, clock() - anchor) * rate : 0));
   function seek(value) {
@@ -11,7 +13,7 @@ export function finishReplay(race, clock = () => performance.now() / 1000) {
     anchor = clock();
   }
   return {
-    raceNumber: race.number, from, to, winnerTime, position,
+    raceNumber: race.number, scope, from, to, winnerTime, position,
     get playing() { return moving && position() < to; },
     get rate() { return rate; },
     pauseAt(value) {

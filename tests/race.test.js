@@ -12,6 +12,9 @@ import {
   odds,
   returns,
   distance,
+  RUN_OUT_SECONDS,
+  runOutEnd,
+  stopDistance,
   elapsed,
   snapshot,
   snapshotAt,
@@ -184,4 +187,40 @@ test("replay pauses on the official winning instant, seeks, and never alters the
   replay.toggle();
   assert.equal(replay.position(), replay.from);
   assert.deepEqual(g, original);
+});
+
+test("settlement pays at the line while all camera clocks follow the smooth run-out to rest", () => {
+  const g = newGame(seeded(519));
+  start(g, 100, seeded(4));
+  changeSpeed(g, 2, 4100);
+  const r = g.race, end = runOutEnd(r), last = end - RUN_OUT_SECONDS;
+  for (const h of r.plan) {
+    const speed = t => (distance(h, t + 0.0001) - distance(h, t)) / 0.0001;
+    assert.ok(Math.abs(speed(h.finish - 0.0001) - speed(h.finish)) < 0.001);
+    let previous = speed(h.finish);
+    for (let i = 1; i <= 64; i++) {
+      const v = speed(h.finish + RUN_OUT_SECONDS * i / 64);
+      assert.ok(v >= 0 && v <= previous + 1e-7);
+      previous = v;
+    }
+    assert.equal(distance(h, end + 2), stopDistance(h));
+  }
+  const wall = r.anchor + (last + 0.001 - r.elapsed) * 1000 / r.speed;
+  assert.ok(settle(g, wall));
+  const record = structuredClone(g);
+  assert.ok(Math.abs(elapsed(r, wall) - last - 0.001) < 1e-6);
+  assert.ok(Math.abs(elapsed(r, wall + 1000) - last - 2.001) < 1e-6);
+  assert.equal(elapsed(r, wall + 60000), end);
+  const mixed = { plan: [{ finish: 68, early: 0, surge: -0.02 }, { finish: 68.2, early: 0, surge: 0.02 }] };
+  const pulledUp = snapshotAt(mixed, 80);
+  assert.ok(pulledUp.ds[1] > pulledUp.ds[0]);
+  assert.deepEqual(pulledUp.order, [0, 1]);
+  for (const scope of ["full", "pullup"]) {
+    const replay = finishReplay(r, () => 0, scope);
+    assert.equal(replay.from, scope === "full" ? -3 : r.plan[r.settlement.order[0]].finish);
+    replay.pauseAt(Infinity);
+    assert.equal(replay.position(), end);
+    assert.equal(replay.playing, false);
+  }
+  assert.deepEqual(g, record);
 });

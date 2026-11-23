@@ -211,6 +211,19 @@ try {
   await waitText(page, "#replay-play", "暫停");
   await page.locator("#full").click();
   assert(await page.locator("#stage #replay-exit").isVisible());
+  await page.locator("#replay-scope").selectOption("full");
+  await waitText(page, "#phase", "全場重播");
+  assert.equal(await page.locator("#replay-scrub").getAttribute("min"), "-3");
+  await page.locator("#replay-scrub").focus();
+  await page.keyboard.press("Home");
+  await waitText(page, "#replay-time", "−0:03.00");
+  await waitText(page, "#countdown", "3");
+  await page.locator("#replay-scope").selectOption("pullup");
+  await waitText(page, "#phase", "過線收步");
+  await page.locator("#replay-scrub").focus();
+  await page.keyboard.press("End");
+  await waitText(page, "#replay-play", "再播");
+  await waitText(peer, "#live-status", "RESULT");
   await page.locator("#replay-exit").click();
   await waitText(page, "#live-status", "RESULT");
   await waitText(page, "#hero-bib", "04");
@@ -220,6 +233,7 @@ try {
   assert.equal(await page.locator(".history-row").count(), 1);
   await page.locator("#close").click();
   await peer.locator("#watch-replay").click();
+  await peer.locator("#replay-scope").selectOption("full");
   await peer.locator("#replay-line").click();
   await waitText(peer, "#replay-play", "播放");
   await page.locator("#next").click();

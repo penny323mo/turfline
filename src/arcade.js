@@ -14,6 +14,8 @@ import {
   changeSpeed,
   elapsed,
   distance,
+  runOutEnd,
+  stopDistance,
   snapshot,
   snapshotAt,
   settle,
@@ -75,15 +77,16 @@ const cameraState = {
   visible: true,
   speed: 1,
   get holdFrame() {
-    return replay ? !replay.playing : game.race.phase !== "running";
+    return replay ? !replay.playing : game.race.phase === "open";
   },
   get staticPose() {
-    return game.race.phase === "settled" && !replay?.playing;
+    return replay ? !replay.playing : game.race.phase === "settled" && elapsed(game.race) >= runOutEnd(game.race);
   },
   courseFrame() {
     if (game.race.phase === "open") return null;
     const frame = replay ? snapshotAt(game.race, replay.position()) : snapshot(game.race);
     frame.speeds = game.race.plan.map((runner, i) => (frame.ds[i] - distance(runner, frame.t - 0.05)) / 0.05);
+    frame.stops = game.race.plan.map(stopDistance);
     return frame;
   },
 };
@@ -232,7 +235,7 @@ function field() {
   $("field-title").textContent =
     r.phase === "open"
       ? "出馬表"
-      : r.phase === "running"
+      : replay ? "重播走位" : r.phase === "running"
         ? "即時走位"
         : "完成名次";
   updateCamera();
@@ -368,18 +371,18 @@ function display() {
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
   $("phase").textContent = replay
-    ? "終點重播"
+    ? { finish: "終點重播", full: "全場重播", pullup: "過線收步" }[replay.scope]
     : opened
     ? "接受投注"
     : done
       ? "賽事完成"
       : "賽事進行中";
   $("live-status").textContent = replay ? "REPLAY" : opened ? "PADDOCK" : done ? "RESULT" : "LIVE";
-  $("subject-label").textContent = replay ? "FINISH REPLAY" : opened ? "PADDOCK FEED" : "TRACKING";
+  $("subject-label").textContent = replay ? "RACE REPLAY" : opened ? "PADDOCK FEED" : "TRACKING";
   $("refill").hidden = !(opened && game.balance < 10 && !r.tickets.length);
   $("field-tag").textContent = opened
     ? "6 匹出賽"
-    : done
+    : replay ? "重播排名" : done
       ? "正式賽果"
       : "場上排名";
   $("closed").innerHTML = done
@@ -457,13 +460,14 @@ async function act(change, message = "", guard = game.race.number) {
 }
 function syncSound(t) {
   const r = game.race;
-  if (!r.plan || (!replay && r.phase !== "running")) {
+  if (!r.plan) {
     audio.reset();
     return;
   }
   const rate = replay ? (replay.playing ? replay.rate : 0) : r.speed;
-  const end = replay ? replay.to : Math.max(...r.plan.map(h => h.finish));
-  audio.step(r, cameraState.selected, t ?? (replay ? replay.position() : elapsed(r)), rate, end, !!replay);
+  const end = replay ? replay.to : runOutEnd(r);
+  const current = t ?? (replay ? replay.position() : elapsed(r));
+  audio.step(r, cameraState.selected, current, current >= end ? 0 : rate, end, !!replay);
 }
 function tick() {
   const r = game.race,
@@ -485,24 +489,30 @@ function tick() {
     const count = Math.ceil(-snap.t);
     const stripKind = replay ? "重播走位" : !live ? "賽果" : count > 0 ? "檔位" : "走位";
     showOrder(!replay && r.settlement ? r.settlement.order : snap.order, stripKind);
-    $("countdown").hidden = !live || count <= 0;
+    $("countdown").hidden = (!live && !replay) || count <= 0;
     if (count > 0) $("countdown").textContent = count;
     $("distance-label").textContent =
-      (live && count > 0
+      (count > 0
         ? "即將起步"
         : snap.remaining
           ? "餘下 " + format(snap.remaining) + " 米"
           : "已過終點") +
       "　·　" +
       time(Math.max(0, snap.t));
+    if (!live && !replay) {
+      const winnerTime = r.plan[r.settlement.order[0]].finish;
+      const motion = snap.t < runOutEnd(r) ? "過線收步" : "賽事完成";
+      $("distance-label").textContent = motion + "　·　頭馬時間 " + time(winnerTime);
+    }
     $("progress").style.width =
       ((LENGTH - snap.remaining) / LENGTH) * 100 + "%";
-    const order = r.settlement?.order ?? snap.order,
+    const order = replay ? snap.order : r.settlement?.order ?? snap.order,
       k = order.join("-");
     if (live || replay) {
       const leader = snap.ds[snap.order[0]];
       const section = leader < bendEntry ? "對面直路" : leader < bendExit ? "彎位" : "終點直路";
-      $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? section + "　" + format(snap.remaining) + " m" : "衝線";
+      const result = snap.t >= Math.max(...r.plan.map(h => h.finish)) ? "過線收步" : "衝線";
+      $("bug-distance").textContent = count > 0 ? "準備起步" : snap.remaining ? section + "　" + format(snap.remaining) + " m" : result;
       const rank = snap.order.indexOf(cameraState.selected) + 1;
       $("bug-rank").textContent = count > 0 ? "第 " + horses[cameraState.selected].number + " 檔" : "焦點馬 第 " + rank + " 位";
     }
@@ -642,26 +652,35 @@ function showReplayControls() {
 }
 function renderReplayClock(t) {
   $("replay-scrub").value = t;
-  $("replay-scrub").setAttribute("aria-valuetext", time(t));
-  $("replay-time").textContent = time(t);
+  const labelTime = t < 0 ? "−" + time(-t) : time(t);
+  $("replay-scrub").setAttribute("aria-valuetext", labelTime);
+  $("replay-time").textContent = labelTime;
   const label = replay.playing ? "暫停" : t >= replay.to ? "再播" : "播放";
   if ($("replay-play").textContent !== label) {
     $("replay-play").textContent = label;
     stage?.cut();
   }
 }
-function beginReplay() {
-  if (replay || game.race.phase !== "settled") return;
-  previousView = { horse: cameraState.selected, cam: cameraState.cam };
-  replay = finishReplay(game.race);
+function playScope(scope, first = false) {
+  const rate = replay?.rate ?? 0.5;
+  replay = finishReplay(game.race, undefined, scope);
+  replay.setRate(rate);
+  $("replay-scope").value = scope;
   $("replay-scrub").min = replay.from;
   $("replay-scrub").max = replay.to;
   $("replay-rate").value = String(replay.rate);
-  updateCamera(game.race.settlement.order[0], "track");
+  updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
+    first || cameraState.cam === "line" ? "track" : cameraState.cam);
   stage?.cut();
   display();
+}
+function beginReplay() {
+  if (replay || game.race.phase !== "settled") return;
+  previousView = { horse: cameraState.selected, cam: cameraState.cam };
+  playScope("finish", true);
   $("replay-play").focus({ preventScroll: true });
 }
+$("replay-scope").onchange = e => playScope(e.target.value);
 function leaveReplay() {
   replay = null;
   updateCamera(previousView.horse, previousView.cam);
@@ -674,10 +693,19 @@ $("replay-play").onclick = () => {
   stage?.cut();
   tick();
 };
-$("replay-scrub").oninput = (e) => {
-  replay.pauseAt(Number(e.target.value));
+function pauseReplayAt(t) {
+  replay.pauseAt(t);
   stage?.cut();
   tick();
+}
+$("replay-scrub").oninput = (e) => {
+  const t = Number(e.target.value);
+  pauseReplayAt(t >= replay.to - Number(e.target.step) ? replay.to : t);
+};
+$("replay-scrub").onkeydown = e => {
+  if (e.key !== "Home" && e.key !== "End") return;
+  e.preventDefault();
+  pauseReplayAt(e.key === "Home" ? replay.from : replay.to);
 };
 $("replay-rate").onchange = (e) => {
   replay.setRate(Number(e.target.value));
@@ -815,8 +843,9 @@ function drawRadar(s = snapshotIfRunning()) {
   ctx.fillStyle = "#395839";
   ctx.fillRect(0, 0, w, h);
   const maxD = s ? Math.max(...s.ds) : 0;
-  const from = replay ? LENGTH - 140 : 0;
-  const to = replay ? LENGTH + 25 : Math.max(LENGTH, maxD);
+  const from = replay && replay.scope !== "full" ? LENGTH - 140 : 0;
+  const to = replay?.scope === "finish" ? Math.max(LENGTH + 25, maxD) :
+    s && game.race.plan ? Math.max(...game.race.plan.map(stopDistance)) : LENGTH;
   const xFor = (d) => w * (0.10 + 0.80 * Math.max(0, Math.min(1, (d - from) / (to - from))));
   ctx.fillStyle = "#f1f5d9";
   ctx.fillRect(xFor(LENGTH), h * 0.16, 2, h * 0.66);

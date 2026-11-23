@@ -1,4 +1,5 @@
 export const LENGTH = 1200;
+export const RUN_OUT_SECONDS = 8;
 export const GATES = 3;
 export const STARTING_FUNDS = 1000;
 export const markets = { win: "獨贏", place: "位置", pair: "連贏" };
@@ -113,11 +114,26 @@ export function start(game, now = Date.now(), rng = uniform) {
   race.elapsed = 0;
 }
 export function elapsed(race, now = Date.now()) {
-  if (race.phase === "settled")
-    return Math.max(...race.plan.map((h) => h.finish)) + 0.8;
-  if (race.phase !== "running") return 0;
+  if (!race.plan) return 0;
   const delta = (now - race.anchor) / 1000;
-  return race.elapsed + delta * (delta < 0 ? 1 : race.speed);
+  const t = race.elapsed + delta * (delta < 0 ? 1 : race.speed);
+  return race.phase === "settled" ? Math.min(runOutEnd(race), t) : t;
+}
+export function runOutEnd(race) {
+  return Math.max(...race.plan.map(h => h.finish)) + RUN_OUT_SECONDS;
+}
+// Integral of a smooth deceleration from the runner's exact line speed to zero.
+const startNormalisation = 1 - 0.023 * (1 - Math.exp(-1 / 0.023));
+function lineSpeed(h) {
+  return LENGTH * (1 - Math.exp(-1 / 0.023)) / (h.finish * startNormalisation);
+}
+// Runners finishing with a stronger surge ease off later. The bounded term
+// has zero slope at either end and keeps every deceleration monotonic.
+function pullUpBias(h) {
+  return 0.64 * Math.tanh(62 * h.surge);
+}
+export function stopDistance(h) {
+  return LENGTH + lineSpeed(h) * RUN_OUT_SECONDS * (0.5 + 2 * pullUpBias(h) / 15);
 }
 export function changeSpeed(game, speed, now = Date.now()) {
   if (![1, 2].includes(speed) || game.race.phase !== "running") return;
@@ -132,10 +148,16 @@ export function changeSpeed(game, speed, now = Date.now()) {
 // Endpoints at t=0 and t=finish are exact. The pace adjustments disappear at the line.
 export function distance(h, t) {
   if (t <= 0) return 0;
-  if (t >= h.finish) return LENGTH + Math.min(22, 17 * (t - h.finish));
+  if (t >= h.finish) {
+    const u = Math.min(1, (t - h.finish) / RUN_OUT_SECONDS);
+    if (u === 1) return stopDistance(h);
+    const coasting = u - u ** 3 + u ** 4 / 2;
+    const easing = 4 * u ** 3 * (1 / 3 - u / 2 + u * u / 5);
+    return LENGTH + lineSpeed(h) * RUN_OUT_SECONDS * (coasting + pullUpBias(h) * easing);
+  }
   const u = t / h.finish;
   const acceleration = 0.023 * (1 - Math.exp(-u / 0.023));
-  const start = (u - acceleration) / (1 - 0.023 * (1 - Math.exp(-1 / 0.023)));
+  const start = (u - acceleration) / startNormalisation;
   const wave = Math.sin(Math.PI * u);
   return (
     LENGTH *
@@ -151,9 +173,11 @@ export function snapshotAt(race, t) {
   const order = ds
     .map((_, i) => i)
     .sort(
-      (a, b) =>
-        ds[b] - ds[a] ||
-        (t > 0 ? race.plan[a].finish - race.plan[b].finish : a - b),
+      (a, b) => {
+        if (t >= race.plan[a].finish && t >= race.plan[b].finish)
+          return race.plan[a].finish - race.plan[b].finish;
+        return ds[b] - ds[a] || (t > 0 ? race.plan[a].finish - race.plan[b].finish : a - b);
+      },
     );
   return {
     t,

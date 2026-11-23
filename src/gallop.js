@@ -8,12 +8,18 @@ import {
 } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
-import { stanceStarts, strideMetres } from './stride.js';
+import { shortStrideRatio, stanceStarts, strideMetres } from './stride.js';
 export { strideLength } from './stride.js';
 
 const turn = Math.PI * 2;
 const stance = 0.22;
 const xAxis = new Vector3(1, 0, 0);
+// Extremal points on the skinned soles, also used by the runtime ground solve.
+export const soleVertices = [
+  202, 210, 1135, 1143, 2355, 2607, 3273, 3281, 4524, 4573, 4575,
+  4584, 4974, 6138, 6145, 6168, 6174, 8416, 8804, 9938, 9945, 9967,
+  9973, 11901, 12585, 13645, 14273,
+];
 
 export function bodyMotion(phase) {
   const a = turn * phase;
@@ -62,7 +68,7 @@ const angle = (dz, dy) => Math.atan2(dz, -dy);
 
 // Bake a cyclic clip once on a reference rig. The game samples the resulting
 // ordinary animation tracks, including when replaying or seeking backwards.
-export function makeGallop(source, scale, ground) {
+export function makeGallop(source, scale, ground, collection = 0) {
   const rig = clone(source);
   rig.rotation.y = Math.PI / 2;
   rig.scale.setScalar(scale);
@@ -102,7 +108,7 @@ export function makeGallop(source, scale, ground) {
       return { length: Math.hypot(delta.y, delta.z), restAngle: angle(delta.z, delta.y) };
     });
     const toe = joints.at(-1).position;
-    return { joints, segments, front, beat, soleZ, toeZ: soleZ - toe.z, toeY: -toe.y };
+    return { joints, segments, front, beat, soleZ, toeZ: soleZ - toe.z, toeY: -toe.y, soles: [] };
   }
   const legs = [
     leg(['thighR_61', 'shinR_60', 'footR_59', 'r_toeR_58'], false, stanceStarts[0], -0.753),
@@ -114,6 +120,12 @@ export function makeGallop(source, scale, ground) {
   const q = new Quaternion(),
     parentQ = new Quaternion(),
     point = new Vector3();
+  for (const v of soleVertices) {
+    body.getVertexPosition(v, point).applyMatrix4(body.matrixWorld);
+    const closest = legs.reduce((a, b) => point.distanceToSquared(a.joints.at(-1).position) <
+      point.distanceToSquared(b.joints.at(-1).position) ? a : b);
+    closest.soles.push(v);
+  }
   function rotateWorld(state, delta, relative = false) {
     const bone = state.bone;
     bone.parent.getWorldQuaternion(parentQ);
@@ -123,21 +135,27 @@ export function makeGallop(source, scale, ground) {
     bone.quaternion.copy(parentQ.invert()).multiply(q).normalize();
     bone.updateWorldMatrix(false, false);
   }
-  function swing(leg, phase, noseOffset) {
+  function swing(leg, phase, noseOffset, heightOffset = 0) {
     const { joints, segments, front } = leg;
-    const u = MathUtils.euclideanModulo(phase - leg.beat, 1);
+    const cycle = MathUtils.euclideanModulo(phase - leg.beat, 1);
+    const support = MathUtils.lerp(stance, 0.40, collection * collection);
+    const u = cycle < support ? cycle * stance / support :
+      stance + (cycle - support) * (1 - stance) / (1 - support);
     const path = hoofPath(u, front);
+    path.z *= MathUtils.lerp(1, shortStrideRatio, collection) * support / stance;
+    if (front) path.z -= 0.15 * collection;
+    path.y *= 1 - 0.62 * collection;
     const fold = u < stance ? 0 : Math.sin((Math.PI * (u - stance)) / (1 - stance)) ** 2;
     const load = u < stance ? Math.sin((Math.PI * u) / stance) ** 2 : 0;
-    const roll = 0.76 * Math.exp(-((u - 0.31) ** 2) / 0.011) - 0.3 * fold;
+    const roll = (0.76 * Math.exp(-((u - 0.31) ** 2) / 0.011) - 0.3 * fold) * (1 - 0.4 * collection);
     const soleZ = leg.soleZ + path.z + noseOffset;
-    const tipY = path.y - (leg.toeY * Math.cos(roll) - leg.toeZ * Math.sin(roll));
+    const tipY = path.y + heightOffset - (leg.toeY * Math.cos(roll) - leg.toeZ * Math.sin(roll));
     const tipZ = soleZ - (leg.toeY * Math.sin(roll) + leg.toeZ * Math.cos(roll));
     // Work up from the hoof to the knee or hock, then solve the two upper
     // segments in the sagittal plane without stretching their lengths.
     let y = tipY,
       z = tipZ;
-    const cannon = Math.atan2(path.z, 1.35) + (front ? -1.46 : 1.05) * fold;
+    const cannon = Math.atan2(path.z, 1.35) + (front ? -1.46 : 1.05) * fold * (1 - 0.45 * collection);
     const distal = front ? [cannon, 0.27 + 0.55 * load - 0.78 * fold] : [cannon];
     for (let i = 0; i < distal.length; i++) {
       const length = segments[i + 2].length,
@@ -161,6 +179,7 @@ export function makeGallop(source, scale, ground) {
     ];
     angles.forEach((target, i) => rotateWorld(joints[i], segments[i].restAngle - target));
     rotateWorld(joints.at(-1), roll);
+    return path.y;
   }
 
   const times = [],
@@ -168,8 +187,10 @@ export function makeGallop(source, scale, ground) {
     frames = 72;
   for (let i = 0; i <= frames; i++) {
     const phase = (i % frames) / frames,
-      a = turn * phase,
-      { heave, pitch } = bodyMotion(phase);
+      a = turn * phase;
+    const motion = bodyMotion(phase);
+    const heave = MathUtils.lerp(motion.heave, -0.19 + (motion.heave + 0.155) * 0.45, collection);
+    const pitch = motion.pitch * (1 - 0.52 * collection);
     times.push(i / frames);
     point.copy(root.position).sub(pivot).applyAxisAngle(xAxis, pitch).add(pivot);
     point.y += heave;
@@ -194,11 +215,27 @@ export function makeGallop(source, scale, ground) {
     // Race distance is measured at the moving nose. Compensate here so the
     // stance foot stays planted while the head nods.
     const muzzleOffset = nose() - restNose;
-    for (const limb of legs) swing(limb, phase, muzzleOffset);
+    for (const limb of legs) {
+      const target = swing(limb, phase, muzzleOffset);
+      if (collection > 0) {
+        // A rolling hoof changes which part of its sole is lowest. During
+        // the longer double-support phase both soles must meet the same turf.
+        let offset = 0;
+        for (let pass = 0; pass < 2; pass++) {
+          let low = Infinity;
+          for (const v of limb.soles) {
+            body.getVertexPosition(v, point).applyMatrix4(body.matrixWorld);
+            low = Math.min(low, point.y);
+          }
+          offset += MathUtils.clamp(target - low, -0.08, 0.08);
+          swing(limb, phase, muzzleOffset, offset);
+        }
+      }
+    }
     for (const s of states.values()) s.bone.quaternion.toArray(s.keys, 4 * i);
   }
   const tracks = [new VectorKeyframeTrack(root.bone.name + '.position', times, rootPositions)];
   for (const [name, s] of states)
     tracks.push(new QuaternionKeyframeTrack(name + '.quaternion', times, s.keys));
-  return new AnimationClip('Gallop', 1, tracks);
+  return new AnimationClip(collection ? 'CollectedStride' + collection : 'Gallop', 1, tracks);
 }

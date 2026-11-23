@@ -187,7 +187,8 @@ export async function startStage(canvas, state, refresh) {
         g = actors[i].group;
       const d = race ? race.ds[i] : z + spec.z + 1.65 * Math.sin(t * 0.32 + i * 0.88);
       const lane = race ? laneX(i) : spec.x;
-      const sway = race ? 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i) : 0.1 * Math.sin(t * 0.38 + i);
+      const moving = race ? THREE.MathUtils.smoothstep(race.speeds[i], 0, 3) : 1;
+      const sway = race ? moving * 0.06 * Math.sin(Math.max(0, race.t) * 0.4 + i) : 0.1 * Math.sin(t * 0.38 + i);
       const pt = onRaceCourse ? coursePoint(d, lane + sway) : { x: lane + sway, z: d, heading: 0 };
       const frame = runnerFrames[i];
       const lean = onRaceCourse ? bendLean(d, race ? race.speeds[i] : 15.7, lane) : 0;
@@ -195,10 +196,10 @@ export async function startStage(canvas, state, refresh) {
       field[i].lean = lean;
       placeRunnerFrame(frame, pt, lean);
       g.position.set(0, 0, 0);
-      g.rotation.y = 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
+      g.rotation.y = moving * 0.008 * Math.cos((race ? race.t : t) * 0.38 + i);
       // Sample the same stride from race time in live coverage and on replay.
       if (race)
-        actors[i].seekDistance(laneTravel(d, lane), race.t > 0);
+        actors[i].seekDistance(laneTravel(d, lane), race.t > 0, laneTravel(race.stops[i], lane));
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
       if (race) g.position.z = -actors[i].noseLead;
@@ -248,7 +249,7 @@ export async function startStage(canvas, state, refresh) {
         .add(
           new THREE.Vector3(
             -5.95 * screenWidthBias,
-            1.78,
+            1.78 * screenWidthBias,
             2.7 * screenWidthBias,
           ),
         );
@@ -306,7 +307,7 @@ export async function startStage(canvas, state, refresh) {
     }
     cut = false;
   }
-  let pendingFrame;
+  let pendingFrame, wasStatic = false;
   function draw() {
     renderer.render(scene, camera);
     if (software) {
@@ -319,7 +320,10 @@ export async function startStage(canvas, state, refresh) {
       lastFrame = 0;
       return;
     }
-    if (!cut && (state.paused || state.staticPose || venueShots[state.cam] || (software && state.holdFrame))) return;
+    const still = state.staticPose;
+    if (wasStatic !== still) cut = true;
+    wasStatic = still;
+    if (!cut && (state.paused || still || venueShots[state.cam] || (software && state.holdFrame))) return;
     const fps = !document.hasFocus() ? 6 : software ? 18 : 60;
     if (lastFrame && now - lastFrame < 1000 / fps - 1) return;
     // Do not enqueue another complete frame while the previous one is pending.

@@ -477,7 +477,7 @@ async function addVenue(group, gateFrame, oval) {
 export function createLandscape(onRaceCourse = false) {
   const group = new THREE.Group(), floor = turf(), mountains = ridges();
   const oval = onRaceCourse ? raceOval : studioOval;
-  const chunks = Array.from({ length: onRaceCourse ? Math.ceil(LENGTH / CHUNK) + 1 : 5 },
+  const chunks = Array.from({ length: onRaceCourse ? Math.round(raceOval.far / CHUNK) + 1 : 5 },
     (_, i) => courseChunk(i, onRaceCourse));
   const grass = grassTufts(), secondGrass = grass.clone();
   const gateFrame = new THREE.Group();

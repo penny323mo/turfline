@@ -1,28 +1,41 @@
-import { distance } from "./race.js";
+import { distance, stopDistance } from "./race.js";
 import { laneX } from "./data.js";
 import { laneTravel } from "./course.js";
-import { launchWeight, stanceStarts, strideCount } from "./stride.js";
+import { raceStride, stanceStarts } from "./stride.js";
 
 // The skinned hoof takes this fraction of a stride to reach the turf after
 // its leg enters stance. Use the first contact, including on a rolling hoof.
-const contactPhase = stanceStarts.map((phase, i) => phase + [0.016, 0.024, 0.018, 0.032][i]);
+const contactOffsets = [
+  [0.016, 0.006, -0.006, -0.016, -0.017],
+  [0.024, 0.008, -0.002, -0.013, -0.016],
+  [0.018, 0.014, -0.003, -0.005, 0.010],
+  [0.032, 0.009, 0.002, -0.010, -0.002],
+];
+function contactDelay(hoof, short) {
+  const row = contactOffsets[hoof], position = short * (row.length - 1);
+  const i = Math.min(row.length - 2, Math.floor(position));
+  return row[i] + (position - i) * (row[i + 1] - row[i]);
+}
 const lookahead = 0.24;
 
 // Return impacts in (from, to]. Adjacent scheduling windows share an endpoint.
 export function hoofContacts(plan, number, from, to) {
-  const at = raceTime => strideCount(number, laneTravel(distance(plan, raceTime), laneX(number - 1)));
+  const offset = laneX(number - 1), stop = laneTravel(stopDistance(plan), offset);
+  const at = raceTime => raceStride(number, laneTravel(distance(plan, raceTime), offset), stop);
   const first = at(from), last = at(to), contacts = [];
-  if (last <= first) return contacts;
-  for (let stride = Math.floor(first); stride <= Math.floor(last); stride++) {
-    for (const [hoof, phase] of contactPhase.entries()) {
+  if (last.count <= first.count) return contacts;
+  for (let stride = Math.floor(first.count) - 1; stride <= Math.floor(last.count) + 1; stride++) {
+    for (const [hoof, phase] of stanceStarts.entries()) {
       const target = stride + phase;
-      if (target <= first || target > last) continue;
+      if (target <= first.count - contactDelay(hoof, first.short) ||
+          target > last.count - contactDelay(hoof, last.short)) continue;
       let lo = from, hi = to;
       // The break accelerates and the finish caps the run-out. Invert the
       // same course-distance function that positions the animated horse.
       while (hi - lo > 0.0002) {
         const mid = (lo + hi) / 2;
-        if (at(mid) < target) lo = mid;
+        const step = at(mid);
+        if (step.count - contactDelay(hoof, step.short) < target) lo = mid;
         else hi = mid;
       }
       contacts.push({ time: (lo + hi) / 2, stride, hoof });
@@ -87,7 +100,7 @@ export function raceAudio() {
 
   function strike(event, number, when, strength) {
     const source = ctx.createBufferSource(), gain = ctx.createGain();
-    const variant = (event.stride + number + event.hoof) % 3;
+    const variant = ((event.stride + number + event.hoof) % 3 + 3) % 3;
     source.buffer = buffers[event.hoof][variant];
     source.playbackRate.value = 0.98 + 0.015 * variant;
     gain.gain.value = [0.64, 0.75, 0.70, 0.83][event.hoof] * strength;
@@ -99,7 +112,7 @@ export function raceAudio() {
       ctx ??= new AudioContext();
       if (!enabled) {
         await ctx.resume();
-        buffers ??= contactPhase.map((_, hoof) => [0, 1, 2].map(variant => turfImpact(ctx, hoof, variant)));
+        buffers ??= stanceStarts.map((_, hoof) => [0, 1, 2].map(variant => turfImpact(ctx, hoof, variant)));
         enabled = true;
       } else {
         reset();
@@ -135,7 +148,9 @@ export function raceAudio() {
       if (from >= to) return;
       const plan = race.plan[runner];
       for (const event of hoofContacts(plan, runner + 1, from, to)) {
-        const strength = launchWeight(distance(plan, event.time)) * (rate > 1 ? 0.72 : 1);
+        const offset = laneX(runner);
+        const step = raceStride(runner + 1, laneTravel(distance(plan, event.time), offset), laneTravel(stopDistance(plan), offset));
+        const strength = step.weight * (1 - 0.55 * step.short) * (rate > 1 ? 0.72 : 1);
         strike(event, runner + 1, Math.max(now, outputNow + (event.time - t) / rate), strength);
       }
       schedule.until = to;

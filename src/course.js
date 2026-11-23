@@ -1,6 +1,6 @@
 import { LENGTH } from "./race.js";
 
-export const raceOval = { near: LENGTH - 480, far: LENGTH + 45, radius: 120 };
+export const raceOval = { near: LENGTH - 480, far: LENGTH + 144, radius: 120 };
 export const studioOval = { near: -30, far: 1230, radius: 60 };
 export const bendExit = raceOval.near;
 export const bendEntry = bendExit - Math.PI * raceOval.radius;

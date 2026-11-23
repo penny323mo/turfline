@@ -100,7 +100,7 @@
                 ></select></label
               ><label
                 >機位<select id="fs-camera" aria-label="全屏鏡頭"></select
-              ></label><button type="button" id="fs-replay" hidden>終點重播</button>
+              ></label><button type="button" id="fs-replay" hidden>賽事重播</button>
             </div>
             <div class="loading" id="loading" role="status">
               <b class="loader"></b>正在載入馬場
@@ -131,10 +131,10 @@
             <div class="race-progress"><span id="progress"></span></div>
             <button class="start-btn" id="start" disabled>封盤開跑　▶</button
             ><button class="start-btn" id="speed" hidden>轉播 1×</button>
-            <button class="start-btn" id="watch-replay" hidden>終點重播　↺</button>
+            <button class="start-btn" id="watch-replay" hidden>賽事重播　↺</button>
           </div>
-          <div class="replay-deck" id="replay-deck" aria-label="終點重播控制" hidden>
-            <div class="replay-clock"><b>終點重播</b><output id="replay-time"></output></div>
+          <div class="replay-deck" id="replay-deck" aria-label="賽事重播控制" hidden>
+            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="full">全場重播</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
             <input id="replay-scrub" type="range" step="0.01" aria-label="重播賽事時間" />
             <div class="replay-keys">
               <button type="button" id="replay-play">暫停</button>
