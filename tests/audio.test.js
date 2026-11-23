@@ -16,10 +16,17 @@ test("four-beat sound follows each runner through the break, the finish and adjo
     assert.ok(events.length > 600);
     for (const [j, event] of events.entries()) {
       assert.ok(event.time > 0 && event.time <= stop);
-      if (j) assert.equal(event.hoof, (events[j - 1].hoof + 1) % 4);
+      const [enter,exit] = horse.leadChanges;
+      const onBend = event.stride >= enter && event.stride < exit;
+      const slot = onBend ? [1,0,3,2].indexOf(event.hoof) : event.hoof;
+      if (j) {
+        const old = events[j-1];
+        const prev = old.stride >= enter && old.stride < exit ? [1,0,3,2].indexOf(old.hoof) : old.hoof;
+        assert.equal(slot, (prev+1)%4);
+      }
       const phase = raceStride(number, racingDistance(horse, i, distance(horse, event.time)),
         racingDistance(horse, i, stopDistance(horse))).count - event.stride;
-      assert.ok(Math.abs(phase - stanceStarts[event.hoof]) < 0.034);
+      assert.ok(Math.abs(phase - stanceStarts[slot]) < 0.034);
     }
     const windows = [];
     for (let t = -1; t < stop; t += 0.12)

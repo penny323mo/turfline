@@ -225,6 +225,10 @@ try {
   await page.locator("#replay-scope").selectOption("stride");
   await waitText(page, "#phase", "步姿慢鏡");
   await page.locator("#next-hoof").click();
+  await page.selectOption("#replay-change","0");
+  await waitText(page, "#subject-label", "右前蹄着地 · 換右腳");
+  await page.selectOption("#replay-change","1");
+  await waitText(page, "#subject-label", "左前蹄着地 · 換左腳");
   const footTime = await page.locator("#replay-time").innerText();
   await page.locator("#previous-hoof").click();
   assert.notEqual(await page.locator("#replay-time").innerText(), footTime);

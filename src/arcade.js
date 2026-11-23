@@ -26,6 +26,7 @@ import {
 } from "./race.js";
 import { openGameSave } from "./game-save.js";
 import { raceAudio } from "./race-audio.js";
+import { rightLead } from "./gallop-lead.js";
 import { finishReplay } from "./replay.js";
 
 const $ = (id) => document.getElementById(id);
@@ -99,6 +100,13 @@ const cameraState = {
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
 new ResizeObserver(() => drawRadar()).observe(mapCanvas);
+new ResizeObserver(() => {
+  const deck = $("replay-deck");
+  if (!deck.hidden) {
+    $("stage").style.setProperty("--replay-height",deck.offsetHeight + "px");
+    if (cameraState.studyMode) stage?.cut();
+  }
+}).observe($("replay-deck"));
 document.querySelectorAll("[data-icon]").forEach((el) => {
   el.outerHTML = icon(el.dataset.icon);
 });
@@ -675,7 +683,13 @@ function renderReplayClock(t) {
     $("previous-hoof").disabled = !previous;
     $("next-hoof").disabled = !next;
     const hoof = current && !replay.playing ? ["右後蹄","左後蹄","右前蹄","左前蹄"][current.hoof] : "";
-    const subject = hoof ? hoof + "着地" : "步姿慢鏡";
+    const changes = game.race.plan[cameraState.selected].leadChanges;
+    $("replay-change").hidden = !changes;
+    const beat = current ?? previous;
+    const side = rightLead(changes, beat?.stride) ? "右" : "左";
+    const lead = changes?.includes(beat?.stride) ? "換" + side + "腳" : side + "腳領步";
+    const motion = hoof ? hoof + "着地" : "步姿慢鏡";
+    const subject = changes && beat && t < replay.to ? motion + " · " + lead : motion;
     if ($("subject-label").textContent !== subject) $("subject-label").textContent = subject;
   }
   const label = replay.playing ? "暫停" : t >= replay.to ? "再播" : "播放";
@@ -696,6 +710,7 @@ function playScope(scope, first = false) {
   replay.setRate(rate);
   if (gait) focusFootfall(cameraState.selected,t);
   $("previous-hoof").hidden = $("next-hoof").hidden = !gait;
+  $("replay-change").hidden = !gait || !game.race.plan[cameraState.selected].leadChanges;
   $("replay-line").hidden = gait;
   if (gait) $("subject-label").setAttribute("aria-live","polite");
   else $("subject-label").removeAttribute("aria-live");
@@ -734,6 +749,12 @@ for (const [button,direction] of [["previous-hoof","previous"],["next-hoof","nex
     if (event) pauseReplayAt(event.time);
   };
 }
+$("replay-change").onchange = (e) => {
+  if (!e.target.value) return;
+  const hit = replay.changeFootfall(cameraState.selected,Number(e.target.value));
+  e.target.value = "";
+  if (hit) pauseReplayAt(hit.time);
+};
 function pauseReplayAt(t) {
   replay.pauseAt(t);
   stage?.cut();

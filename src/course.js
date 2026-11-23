@@ -6,7 +6,7 @@ export const bendExit = raceOval.near;
 export const bendEntry = bendExit - Math.PI * raceOval.radius;
 
 // Official race distance follows the centreline. Positive offsets are on
-// the runner's right and travel farther around the left-hand bend.
+// the outside of the right-hand bend and travel farther around it.
 export function coursePoint(distance, offset = 0) {
   const { radius, near } = raceOval;
   if (distance <= bendEntry)

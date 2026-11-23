@@ -6,6 +6,7 @@ import { bodyMotion, limbs, makeGallop, makeWalk, muzzleVertices, soleVertices }
 import { raceStride, strideCount, strideLength } from './stride.js';
 import { fitRacingReins } from './racing-reins.js';
 import { walkStride } from './parade.js';
+import { lateralBalance, sampleLead } from './gallop-lead.js';
 import { hoofPlant } from './hoof-plant.js';
 
 const SCALE = 0.444;
@@ -26,7 +27,7 @@ export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', docum
       rest.setTime(0);
       const length = strideLength(1);
       const clips = collections.map(w => makeGallop(gltf.scene, SCALE, REST_GROUND, w, length));
-      asset = { walk: makeWalk(gltf.scene, SCALE, REST_GROUND), scene: gltf.scene, stride: clips[0], clips, byLength: new Map([[length, clips]]) };
+      asset = { walk: makeWalk(gltf.scene, SCALE, REST_GROUND), scene: gltf.scene, stride: clips[0], clips, byLength: new Map([[length, clips]]), turnClips: new Map() };
       return asset;
     }).catch(error => {
       assetPromise = undefined;
@@ -74,6 +75,11 @@ export function makeAyanHorse(spec) {
   if (!asset.byLength.has(length)) asset.byLength.set(length,
     collections.map(w => makeGallop(asset.scene, SCALE, REST_GROUND, w, length)));
   const strides = asset.byLength.get(length).map(clip => mixer.clipAction(clip));
+  // The bend is taken at full stride, so the two changes and the inside
+  // lead each need just one clip at this runner's natural stride length.
+  if (!asset.turnClips.has(length)) asset.turnClips.set(length,
+    ['toRight','right','toLeft'].map(kind => [kind,makeGallop(asset.scene,SCALE,REST_GROUND,0,length,kind)]));
+  const turns = asset.turnClips.get(length).map(([kind,clip]) => [kind,mixer.clipAction(clip)]);
   const walkAction = mixer.clipAction(asset.walk);
   mixer.update(0);
   horse.updateMatrixWorld(true);
@@ -142,7 +148,7 @@ export function makeAyanHorse(spec) {
     waist.rotation.x = walking ? -0.19 + 0.027 * Math.sin(2*a-0.84) : weight * (1 - 0.72 * short) * (0.26 - pitch + 0.09 * Math.sin(a - 1.28));
     waist.rotation.z = walking ? 0.018 * Math.sin(a-0.3) : -0.6 * shoulderRoll * weight * (1 - 0.64 * short);
   }
-  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0, walking = false) {
+  function pose(distance, weight, count = strideCount(spec.number, distance), short = 0, lean = 0, walking = false, lead) {
     travelled = distance;
     if (waiting) {
       for (const joint of gateJoints) joint.bone.quaternion.copy(joint.rest);
@@ -154,23 +160,29 @@ export function makeAyanHorse(spec) {
     // planted forefoot off the turf as the stride length changes.
     const sample = short * (strides.length - 1);
     for (const [i, action] of strides.entries()) {
-      action.weight = weight * Math.max(0, 1 - Math.abs(i - sample));
+      action.weight = (!lead || lead.kind === 'left' ? weight : 0) * Math.max(0, 1 - Math.abs(i - sample));
       if (action.weight > 0) action.play();
       action.enabled = action.weight > 0;
     }
+    for (const [kind,action] of turns) {
+      action.enabled = lead?.kind === kind;
+      if (action.enabled) action.play();
+    }
     if (walking) walkAction.play();
     walkAction.enabled = walking;
-    mixer.setTime(phase);
+    mixer.setTime(lead?.time ?? phase);
     placeRider(phase, weight, short, walking);
+    if (lead) waist.rotation.z *= lateralBalance(lead.kind,lead.time);
     // The boots stay in the irons as the shoulders turn into the running line.
     waist.rotation.z += lean * 0.24;
     waist.rotation.y = -lean * 0.39;
     followMouth(walking ? 0.8 : weight, false, walking);
   }
-  function seekDistance(distance, running, stop, lean = 0, curvature = 0) {
+  function seekDistance(distance, running, stop, lean = 0, curvature = 0, changes) {
     const step = raceStride(spec.number, distance, stop);
-    pose(distance, running ? step.weight : 0, step.count, step.short, lean);
-    if (running) plant.apply(distance, stop, step, noseLead, curvature);
+    const lead = changes ? sampleLead(changes,step.count) : null;
+    pose(distance, running ? step.weight : 0, step.count, step.short, lean, false, lead);
+    if (running) plant.apply(distance, stop, step, noseLead, curvature, lead);
   }
   function waitAt(seconds) {
     if (!waiting) pose(0,0);

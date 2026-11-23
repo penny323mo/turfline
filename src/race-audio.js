@@ -1,5 +1,6 @@
 import { distance, stopDistance } from "./race.js";
 import { racingDistance } from "./racing-line.js";
+import { rightLead } from "./gallop-lead.js";
 import { raceStride, stanceStarts } from "./stride.js";
 
 // The skinned hoof takes this fraction of a stride to reach the turf after
@@ -10,7 +11,11 @@ const contactOffsets = [
   [0.024, 0.015, 0.003, -0.008, 0.010],
   [0.029, 0.014, 0.002, -0.013, -0.007],
 ];
-function contactDelay(hoof, short) {
+// The rig is asymmetric. These are the measured contacts of the four
+// physical soles when the right fore leads at racing speed on the bend.
+const rightLeadOffsets = [0.028,0.012,0.028,0.020];
+function contactDelay(hoof, short, inside) {
+  if (inside) return rightLeadOffsets[hoof];
   const row = contactOffsets[hoof], position = short * (row.length - 1);
   const i = Math.min(row.length - 2, Math.floor(position));
   return row[i] + (position - i) * (row[i + 1] - row[i]);
@@ -24,17 +29,19 @@ export function hoofContacts(plan, number, from, to) {
   const first = at(from), last = at(to), contacts = [];
   if (last.count <= first.count) return contacts;
   for (let stride = Math.floor(first.count) - 1; stride <= Math.floor(last.count) + 1; stride++) {
-    for (const [hoof, phase] of stanceStarts.entries()) {
+    const inside = rightLead(plan.leadChanges, stride);
+    for (const [slot, phase] of stanceStarts.entries()) {
+      const hoof = inside ? slot ^ 1 : slot;
       const target = stride + phase;
-      if (target <= first.count - contactDelay(hoof, first.short) ||
-          target > last.count - contactDelay(hoof, last.short)) continue;
+      if (target <= first.count - contactDelay(hoof, first.short, inside) ||
+          target > last.count - contactDelay(hoof, last.short, inside)) continue;
       let lo = from, hi = to;
       // The break accelerates and the finish caps the run-out. Invert the
       // same course-distance function that positions the animated horse.
       while (hi - lo > 0.0002) {
         const mid = (lo + hi) / 2;
         const step = at(mid);
-        if (step.count - contactDelay(hoof, step.short) < target) lo = mid;
+        if (step.count - contactDelay(hoof, step.short, inside) < target) lo = mid;
         else hi = mid;
       }
       contacts.push({ time: (lo + hi) / 2, stride, hoof });

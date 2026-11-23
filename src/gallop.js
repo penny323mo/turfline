@@ -8,12 +8,12 @@ import {
 } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
-import { shortStrideRatio, stanceStarts, strideMetres } from './stride.js';
+import { gallopSupport as stance, shortStrideRatio, stanceStarts, strideMetres } from './stride.js';
+import { changingLead, lateralBalance, legBeat } from './gallop-lead.js';
 import { walkBeats, walkingFoot, walkStride, walkSupport } from './parade.js';
 export { strideLength } from './stride.js';
 
 const turn = Math.PI * 2;
-const stance = 0.22;
 const xAxis = new Vector3(1, 0, 0);
 const yAxis = new Vector3(0, 1, 0);
 const zAxis = new Vector3(0, 0, 1);
@@ -96,15 +96,15 @@ const angle = (dz, dy) => Math.atan2(dz, -dy);
 
 // Bake a cyclic clip once on a reference rig. The game samples the resulting
 // ordinary animation tracks, including when replaying or seeking backwards.
-export function makeGallop(source, scale, ground, collection = 0, stride = strideMetres) {
-  return bakeStride(source, scale, ground, collection, stride, false);
+export function makeGallop(source, scale, ground, collection = 0, stride = strideMetres, lead = 'left') {
+  return bakeStride(source, scale, ground, collection, stride, false, lead);
 }
 
 export function makeWalk(source, scale, ground) {
-  return bakeStride(source, scale, ground, 0, walkStride, true);
+  return bakeStride(source, scale, ground, 0, walkStride, true, 'left');
 }
 
-function bakeStride(source, scale, ground, collection, stride, walking) {
+function bakeStride(source, scale, ground, collection, stride, walking, lead) {
   const rig = clone(source);
   rig.rotation.y = Math.PI / 2;
   rig.scale.setScalar(scale);
@@ -235,17 +235,22 @@ function bakeStride(source, scale, ground, collection, stride, walking) {
 
   const times = [],
     pivot = new Vector3(0, 1.34, -0.18),
-    frames = 72;
+    duration = changingLead(lead) ? 2 : 1,
+    frames = 72 * duration;
   for (let i = 0; i <= frames; i++) {
-    const phase = (i % frames) / frames,
+    const sampleTime = i / 72, phase = (i % 72) / 72,
       a = turn * phase;
     const motion = walking ? {
       heave: -0.123 + 0.014 * Math.cos(2*a - 0.48), pitch: 0.026 * Math.sin(2*a),
       sway: 0.022 * Math.sin(a), roll: -0.027 * Math.sin(a), shoulderRoll: 0.024 * Math.sin(a - 0.8),
     } : bodyMotion(phase);
+    const balanceSide = lateralBalance(lead,sampleTime);
+    motion.sway *= balanceSide;
+    motion.roll *= balanceSide;
+    motion.shoulderRoll *= balanceSide;
     const heave = MathUtils.lerp(motion.heave, -0.19 + (motion.heave + 0.155) * 0.45, collection);
     const pitch = motion.pitch * (1 - 0.52 * collection);
-    times.push(i / frames);
+    times.push(sampleTime);
     point.copy(root.position).sub(pivot).applyAxisAngle(xAxis, pitch).add(pivot);
     point.y += heave;
     const balance = 1 - 0.64 * collection;
@@ -285,7 +290,8 @@ function bakeStride(source, scale, ground, collection, stride, walking) {
     // Race distance is measured at the moving nose. Compensate here so the
     // stance foot stays planted while the head nods.
     const muzzleOffset = walking ? 0 : nose() - restNose;
-    for (const limb of legs) {
+    for (const [index,limb] of legs.entries()) {
+      if (!walking) limb.beat = legBeat(index,lead,sampleTime);
       if (limb.front) {
         // The scapula glides on the rib cage as this foreleg reaches and
         // takes weight. Move the socket first, then solve down to the sole.
@@ -332,5 +338,5 @@ function bakeStride(source, scale, ground, collection, stride, walking) {
     tracks.push(new VectorKeyframeTrack(limb.joints[0].bone.name + '.position', times, limb.shoulderKeys));
   for (const [name, s] of states)
     tracks.push(new QuaternionKeyframeTrack(name + '.quaternion', times, s.keys));
-  return new AnimationClip(walking ? 'ParadeWalk' : collection ? 'CollectedStride' + collection : 'Gallop', 1, tracks);
+  return new AnimationClip(walking ? 'ParadeWalk' : collection ? 'CollectedStride' + collection : lead === 'left' ? 'Gallop' : 'Gallop-' + lead, duration, tracks);
 }

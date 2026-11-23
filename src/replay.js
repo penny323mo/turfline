@@ -14,11 +14,19 @@ export function finishReplay(race, clock = () => performance.now() / 1000, scope
     cursor = Math.max(from, Math.min(to, value));
     anchor = clock();
   }
+  function runnerContacts(runner) {
+    if (!contacts.has(runner)) contacts.set(runner, hoofContacts(race.plan[runner], runner+1, from, to));
+    return contacts.get(runner);
+  }
   return {
+    changeFootfall(runner, index) {
+      const stride = race.plan[runner].leadChanges?.[index];
+      if (stride == null) return null;
+      return runnerContacts(runner).find(hit => hit.stride === stride && hit.hoof === (index === 0 ? 2 : 3));
+    },
     raceNumber: race.number, scope, from, to, winnerTime, position,
     footsteps(runner, t = position()) {
-      if (!contacts.has(runner)) contacts.set(runner, hoofContacts(race.plan[runner], runner+1, from, to));
-      const events = contacts.get(runner);
+      const events = runnerContacts(runner);
       let lo = 0, hi = events.length;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;

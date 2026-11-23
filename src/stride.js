@@ -1,6 +1,7 @@
 // A stride is counted in course metres, including the runner's starting phase.
-// The limbs are ordered trailing hind, leading hind, trailing fore, leading fore.
+// The four strike slots are trailing hind, leading hind, trailing fore, leading fore.
 export const strideMetres = 7.05;
+export const gallopSupport = 0.22;
 export const stanceStarts = [0, 0.14, 0.36, 0.51];
 export const shortStrideRatio = 0.40;
 const transition = 15;

@@ -27,3 +27,5 @@ Turfline 在遊戲中調整朝向、尺度和毛色，配上自製騎師、馬�
 1.10 版加入亮相圈用嘅 `ParadeWalk`。每個循環行 1.62 米，速度為每秒 1.48 米，慢行時依次右後、右前、左後、左前落地。動畫按亮相圈曲率校正支撐腳，騎師坐姿、韁繩同馬頸亦隨步行節奏移動。[FEI 步法說明，第 403 條](https://inside.fei.org/system/files/FEI_Dressage_Rules_2022_Clean_Version_V2.pdf)
 
 疾馳同慢行時兩側肩胛各自會隨前肢承重滑動。幅度由 Turfline 按模型骨架調校。馬頸轉動後，鬃毛同耳朵亦有各自嘅跟隨動作。[馬匹肩胛運動研究](https://pubmed.ncbi.nlm.nih.gov/21059059/)
+
+1.11 版為入彎同出彎各自編製換腳動作。原有 `Gallop` 係左腳領步，`GallopRight` 係右腳領步。兩段可循環。要接埋播放，可以用 `Gallop → ChangeToRight → GallopRight → ChangeToLeft → Gallop`，兩段換腳動畫各播放一次。每隻腳會完成原有支撐，再調整下一步嘅擺動時間。遊戲按賽駒實際路程播放，下載版用每秒 16 米嘅配速。內側前肢領步嘅設計參考純種馬過彎研究。[Parkes 等人嘅馬匹過彎研究](https://pubmed.ncbi.nlm.nih.gov/33373408/)

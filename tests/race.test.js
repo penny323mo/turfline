@@ -240,7 +240,11 @@ test("hoof-by-hoof replay finds both neighbouring strikes of the selected runner
     const exact = playback.footsteps(runner,middle.next.time);
     assert.deepEqual(exact.current,middle.next);
     assert.deepEqual(exact.previous,middle.previous);
-    assert.equal(exact.next.hoof,(exact.current.hoof+1)%4);
+    const [enter,exit] = game.race.plan[runner].leadChanges;
+    const order = stride => stride >= enter && stride < exit ? [1,0,3,2] : [0,1,2,3];
+    assert.equal(order(exact.next.stride).indexOf(exact.next.hoof),(order(exact.current.stride).indexOf(exact.current.hoof)+1)%4);
+    assert.equal(playback.changeFootfall(runner,0).hoof,2);
+    assert.equal(playback.changeFootfall(runner,1).hoof,3);
     assert.deepEqual(playback.footsteps(runner,exact.next.time).previous,exact.current);
     const last = playback.footsteps(runner,playback.to);
     assert.ok(last.previous.time < playback.to && !last.next);

@@ -137,6 +137,7 @@ export async function startStage(canvas, state, refresh) {
   const cameraFrame = new THREE.Matrix4(), inverseFrame = new THREE.Matrix4();
   const hoofMark = document.getElementById("hoof-mark"), solePoint = new THREE.Vector3();
   const replayDeck = document.getElementById("replay-deck"), orderStrip = document.getElementById("order-strip");
+  const lowerThird = canvas.parentElement.querySelector(".lower-third");
   let cut = true,
     lastFrame = 0,
     lastUi = -1,
@@ -227,7 +228,7 @@ export async function startStage(canvas, state, refresh) {
       if (parade) actors[i].walk(pt.metres);
       else if (race && race.t < 0) actors[i].waitAt(race.t);
       else if (race)
-        actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean, pt.curvature);
+        actors[i].seekDistance(racingDistance(runner, i, d), race.t > 0, racingDistance(runner, i, race.stops[i]), lean, pt.curvature, runner.leadChanges);
       else if (actors[i].seek && cut) actors[i].seek(t + i * 0.147, true, 15.7);
       else actors[i].update(dt, true, 15.7);
       if (race) g.position.z = -(race.t < 0 ? actors[i].restNose : actors[i].noseLead);
@@ -350,7 +351,8 @@ export async function startStage(canvas, state, refresh) {
     camera.fov = fov / (state.zoom || 1);
     if (state.studyMode && canvasBox.contains(replayDeck)) {
       const { width, height, top } = canvasBox.getBoundingClientRect();
-      const bottomInset = replayDeck.getBoundingClientRect().height + 4;
+      const bottomInset = Math.max(replayDeck.getBoundingClientRect().height,
+        top+height-lowerThird.getBoundingClientRect().top) + 4;
       const topInset = Math.max(0, orderStrip.getBoundingClientRect().bottom - top) + 4;
       const usableHeight = Math.max(height * 0.35, height - topInset - bottomInset);
       const scale = Math.max(1, height / (usableHeight * screenWidthBias));

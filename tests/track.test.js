@@ -345,6 +345,23 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
         - baked.scene.getObjectByName("JockeyLegs").morphTargetInfluences[0]) < 0.001);
     }
   }
+  const period = strideLength(1)/16;
+  for (const [name,cycles,start] of [["GallopRight",1,50],["ChangeToRight",2,39],["ChangeToLeft",2,89]]) {
+    const action = baked.animations.find(a => a.name === name);
+    assert.ok(Math.abs(action.duration-period*cycles) < 0.00001);
+    playback.stopAllAction();
+    playback.clipAction(action).reset().play();
+    for (let n=0; n<79; n++) {
+      const t = period*cycles*((n*31)%79)/79;
+      runner.seekDistance((start+t/period)*strideLength(1),true,Infinity,0,0,[40,90]);
+      playback.setTime(t);
+      runner.group.updateMatrixWorld(true);
+      baked.scene.updateMatrixWorld(true);
+      const exported = samples(baked.scene);
+      samples(runner.group).forEach((p,j) => assert.ok(p.distanceTo(exported[j]) < 0.002,
+        name+" at "+t.toFixed(4)+"s, landmark "+j));
+    }
+  }
   const plan = { finish: 68, early: 0.008, surge: 0.006 }, lane = laneX(0);
   for (const [name, start] of [["GateBreak", 0], ["PullUp", plan.finish]]) {
     const transition = baked.animations.find(a => a.name === name);
@@ -377,14 +394,17 @@ test("audible strikes coincide with the first descent to turf of the correspondi
     const height = (t, hoof) => {
       const d = distance(plan, t);
       const banking = linePose(plan,i,d,(d-distance(plan,t-0.02))/0.02).lean;
-      runner.seekDistance(racingDistance(plan,i,d), true, racingDistance(plan,i,stopDistance(plan)), banking);
+      runner.seekDistance(racingDistance(plan,i,d), true, racingDistance(plan,i,stopDistance(plan)), banking, linePose(plan,i,d).curvature,plan.leadChanges);
       runner.group.updateMatrixWorld(true);
       return mesh.getVertexPosition(soles[hoof], point).applyMatrix4(mesh.matrixWorld).y;
     };
-    for (const {time, hoof} of hoofContacts(plan, spec.number, 24, 26)) {
-      const contact = height(time, hoof);
-      assert.ok(contact >= -0.003 && contact < 0.02);
-      assert.ok(height(time - 0.020, hoof) > contact + 0.02);
+    for (const {time, hoof, stride} of hoofContacts(plan, spec.number, 0, plan.finish)) {
+      const nearChange = plan.leadChanges.some(change => Math.abs(stride-change) <= 1);
+      if (!nearChange && (time < 24 || time > 26)) continue;
+      const contact = height(time, hoof), before = height(time - 0.020, hoof);
+      const label = spec.number+" hoof "+hoof+" stride "+stride+" at "+time+"s";
+      assert.ok(contact >= -0.003 && contact < 0.02, label+" contacts at "+contact+"m");
+      assert.ok(before > contact + 0.02, label+" descent "+(before-contact)+"m");
     }
   }
 });
@@ -432,7 +452,7 @@ test("all six mounted runners keep each support on its patch of turf through the
       const pt = linePose(h,i,d,speed);
       placeRunnerFrame(frame,pt,pt.lean);
       runner.group.position.z = 0;
-      runner.seekDistance(racingDistance(h,i,d),true,stop,pt.lean,pt.curvature);
+      runner.seekDistance(racingDistance(h,i,d),true,stop,pt.lean,pt.curvature,h.leadChanges);
       runner.group.position.z = -runner.noseLead;
       frame.updateMatrixWorld(true);
       return [0,1,2,3].map(hoof => runner.hoofPosition(hoof,new Vector3()));
@@ -507,5 +527,55 @@ test("the walking field takes four separate beats, plants each sole around the r
     actor.seekDistance(0,false,1200);
     frame.updateMatrixWorld(true);
     feet().forEach((p,j) => assert.ok(p.distanceTo(standing[j]) < 0.0001));
+  }
+});
+
+test("a flying change keeps its supports, reaches the inside foreleg and reproduces every seam after a seek", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64,"+bytes.toString("base64"));
+  const game = newGame(() => 0.39);
+  start(game,0,() => 0.39);
+  for (const [i,spec] of horses.entries()) {
+    const h = game.race.plan[i], runner = makeAyanHorse(spec);
+    const length = strideLength(spec.number), phase = strideCount(spec.number,0);
+    const soles = () => [0,1,2,3].map(j => runner.hoofPosition(j,new Vector3()));
+    function sample(count) {
+      const d = (count-phase)*length;
+      runner.seekDistance(d,true,Infinity,0,0,h.leadChanges);
+      runner.group.updateMatrixWorld(true);
+      return soles().map(p => { p.z += d-runner.noseLead; return p; });
+    }
+    for (const [k,change] of h.leadChanges.entries()) {
+      for (const seam of [change-1,change+1]) {
+        const before = sample(seam-0.000001), after = sample(seam+0.000001);
+        sample(seam+13.8);
+        const repeat = sample(seam+0.000001);
+        after.forEach((p,j) => {
+          assert.ok(p.distanceTo(before[j]) < 0.00015,"no cut at the edge of a change clip");
+          assert.ok(p.distanceTo(repeat[j]) < 0.000001,"out-of-order pose drift");
+        });
+      }
+      for (const stride of [change-1,change]) {
+        const onRight = (k === 0) === (stride === change);
+        const order = onRight ? [1,0,3,2] : [0,1,2,3];
+        for (const [slot,beat] of [0,0.14,0.36,0.51].entries()) {
+          const hoof = order[slot];
+          const first = sample(stride+beat+0.07)[hoof], last = sample(stride+beat+0.16)[hoof];
+          assert.ok(Math.max(first.y,last.y) < 0.018);
+          assert.ok(first.distanceTo(last) < 0.016,"sliding through a lead change");
+        }
+      }
+    }
+    // The centre is to the right of a horse looking along this bend. Its
+    // right fore sole must be closer to the centre than its left fore sole.
+    const mid = (bendEntry+bendExit)/2;
+    const pt = linePose(h,i,mid,16), frame = new Group();
+    frame.add(runner.group);
+    placeRunnerFrame(frame,pt,pt.lean);
+    runner.seekDistance(racingDistance(h,i,mid),true,Infinity,pt.lean,pt.curvature,h.leadChanges);
+    frame.updateMatrixWorld(true);
+    const feet = soles();
+    const inward = new Vector3(-Math.cos(pt.heading),0,Math.sin(pt.heading));
+    assert.ok(feet[2].clone().sub(feet[3]).dot(inward) > 0.2);
   }
 });

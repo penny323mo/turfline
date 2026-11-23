@@ -106,6 +106,7 @@ const libraryCards = [
     links: [
       ["睇亮相慢行、出閘同疾馳", "./views/parade-and-gallop.mp4"],
       ["睇軟件渲染改前改後實況", "./views/software-playback.mp4"],
+      ["睇 6 號馬入彎、出彎換腳", "./views/lead-changes.mp4"],
       ["睇 6 號馬四蹄逐拍落地", "./views/footwork.mp4"],
       ["睇 3 號馬移出外疊超越", "./views/running-lines.mp4"],
       ["睇出閘至收步實況", "./views/gate-and-pull-up.mp4"],

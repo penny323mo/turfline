@@ -1,5 +1,6 @@
 import { MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 import { limbs, supportFraction, touchdownReach } from './gallop.js';
+import { legBeat } from './gallop-lead.js';
 import { raceStride, shortStrideRatio, stanceStarts, strideLength } from './stride.js';
 
 const midStance = 0.12;
@@ -65,12 +66,13 @@ export function hoofPlant(horse, body, mount, number, restNose) {
         limb.changed = false;
       }
     },
-    apply(metres, stop, step, nose, curvature) {
+    apply(metres, stop, step, nose, curvature, lead) {
       if (!step.weight || (!step.short && Math.abs(curvature) < 0.0001)) return;
       toMount.copy(mount.matrixWorld).invert().multiply(body.matrixWorld);
       const support = supportFraction(step.short);
       for (const [i, limb] of feet.entries()) {
-        let cycle = MathUtils.euclideanModulo(step.count - stanceStarts[i], 1);
+        const beat = lead ? legBeat(i,lead.kind,lead.time) : stanceStarts[i];
+        let cycle = MathUtils.euclideanModulo(step.count - beat, 1);
         if (cycle > 0.9) cycle--;
         const blend = MathUtils.smoothstep(cycle, -0.07, 0) * (1 - MathUtils.smoothstep(cycle, support, support + 0.09));
         if (!blend) continue;

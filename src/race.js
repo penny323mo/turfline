@@ -1,4 +1,5 @@
 import { LENGTH } from "./course.js";
+import { planLeadChanges } from "./gallop-lead.js";
 import { planRacingLines } from "./traffic.js";
 export { LENGTH } from "./course.js";
 export const RUN_OUT_SECONDS = 8;
@@ -112,7 +113,10 @@ export function start(game, now = Date.now(), rng = uniform) {
   const race = game.race;
   race.plan = drawPlan(race, rng);
   const lines = planRacingLines(race.plan, distance, runOutEnd(race));
-  race.plan.forEach((h, i) => { h.line = lines[i]; });
+  race.plan.forEach((h, i) => {
+    h.line = lines[i];
+    h.leadChanges = planLeadChanges(h,i);
+  });
   race.phase = "running";
   race.anchor = now + GATES * 1000;
   race.elapsed = 0;
