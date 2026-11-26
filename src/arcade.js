@@ -20,6 +20,7 @@ import {
   stopDistance,
   snapshot,
   snapshotAt,
+  lockLatePick,
   settle,
   next,
   refill,
@@ -32,6 +33,8 @@ import { finishReplay } from "./replay.js";
 import { checkpoints, raceMoments } from "./race-moments.js";
 import { createRaceReport } from "./race-report.js";
 import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, racesPerMeet } from "./meet.js";
+import { racePace } from "./race-pace.js";
+import { createLatePick, describeLatePick } from "./late-pick-ui.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
@@ -112,6 +115,14 @@ const cameraState = {
 };
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
+const showLatePick = createLatePick(async (runner, reward) => {
+  if (!ready || busy) return "";
+  if (await act(g => lockLatePick(g, runner, reward))) {
+    updateCamera(runner);
+    return "";
+  }
+  return $("message").textContent;
+});
 const showRaceReport = createRaceReport(index => {
   if (game.race.phase !== "settled") return;
   if (replay) playScope("moment", false, index);
@@ -410,6 +421,9 @@ function display() {
   $("meet-number").textContent = "R" + pad(r.number);
   $("meet-day-label").textContent = "翠谷馬場 · 第 " + format(day) + " 個賽日";
   $("meet-round-label").textContent = "第 " + round + "／" + racesPerMeet + " 場";
+  const pace = racePace(r);
+  $("pace-name").textContent = pace.name;
+  $("pace-hint").textContent = pace.hint;
   $("bet-form").hidden = !opened;
   $("closed").hidden = opened;
   $("open-slip").hidden = !opened;
@@ -461,6 +475,7 @@ function display() {
   $("result").hidden = !done;
   if (done) {
     const s = r.settlement;
+    const net = s.paid - s.stake + (r.latePick?.paid ?? 0);
     const standing = meetStandings(game.history, day);
     const leader = standing.rows[0];
     $("result").innerHTML =
@@ -481,8 +496,8 @@ function display() {
       '</div><p class="result-summary">頭馬時間 ' +
       finishTime(r.plan[s.order[0]].finish) +
       "　·　本場淨額 " +
-      (s.paid - s.stake >= 0 ? "+" : "") +
-      format(s.paid - s.stake) +
+      (net >= 0 ? "+" : "") +
+      format(net) +
       " 枚</p>" +
       '<button type="button" id="result-meet" class="meet-result" aria-haspopup="dialog">' +
       '<span>' + (standing.champion ? "賽日總冠軍" : "賽日積分領先") + '</span>' +
@@ -638,6 +653,7 @@ function tick() {
     }
   }
   showRaceReport(r, snap?.t, replay);
+  showLatePick(r, snap, !!replay);
   syncSound(snap?.t);
   drawRadar(snap);
 }
@@ -909,8 +925,8 @@ function fullInfo() {
   $("full").setAttribute("aria-label", full ? "離開全螢幕" : "全螢幕");
   if (full) $("stage").append($("replay-deck"));
   else document.querySelector(".broadcast-strip").after($("replay-deck"));
-  if (full) $("stage").append($("order-strip"));
-  else $("stage").after($("order-strip"));
+  if (full) $("stage").append($("order-strip"), $("late-pick"));
+  else $("stage").after($("order-strip"), $("late-pick"));
   if (full) $("stage").append($("sound"));
   else quickFocus.after($("sound"));
   const actionAnchor = full ? $("fs-replay") : $("watch-replay");
@@ -981,7 +997,11 @@ $("dialog").onclick = (e) => {
 $("rules-button").onclick = () =>
   dialog(
     "遊戲玩法 · v" + version,
-    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
+    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。可以先睇本場步速，再選馬同注碼。每注由 10 枚起，以 10 枚為單位。同場可落多張注單，開跑前可取消。</span></li>" +
+    "<li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li>" +
+    "<li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li>" +
+    "<li><b>尾段預測</b><span>頭馬轉入直路後，可以免費揀一次頭馬，最後 200 米截止。揀馬時排得越後，估中獎勵越多。</span></li>" +
+    "<li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
   );
 $("history-button").onclick = () =>
   dialog(
@@ -1003,6 +1023,7 @@ $("history-button").onclick = () =>
               " 枚　·　派彩 " +
               format(r.paid) +
               " 枚</p>" +
+              (r.latePick ? "<p>尾段預測 · " + describeLatePick(r.latePick) + "</p>" : "") +
               r.tickets
                 .map(
                   (t) =>

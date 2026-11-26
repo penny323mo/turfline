@@ -113,6 +113,13 @@
           <div class="order-strip" id="order-strip" role="group" aria-label="馬匹走位，點選馬號切換焦點" hidden>
             <span id="order-kind">走位</span><div id="order-runners"></div>
           </div>
+          <section class="late-pick" id="late-pick" aria-labelledby="late-pick-title" hidden>
+            <div class="late-heading">
+              <h3 id="late-pick-title">尾段預測</h3>
+              <p id="late-status" aria-live="polite"></p>
+            </div>
+            <div id="late-options" role="group" aria-label="免費預測頭馬" hidden></div>
+          </section>
           <section id="race-report" aria-labelledby="report-title" hidden>
             <div class="report-heading">
               <h3 id="report-title">分段戰報</h3>
@@ -172,6 +179,10 @@
             <span class="slip-icon">◈</span>
           </div>
           <form id="bet-form">
+            <div class="pace-preview">
+              <strong id="pace-name"></strong>
+              <p id="pace-hint"></p>
+            </div>
             <div class="market-tabs" id="market-tabs">
               <button type="button" data-market="win" aria-pressed="true">
                 獨贏</button

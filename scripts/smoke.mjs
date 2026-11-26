@@ -195,6 +195,19 @@ try {
   await page.locator(".live-controls #sound").click();
   await waitText(page, "#sound", "音效 關");
   assert.equal(await page.locator("#field-body tr").count(), 6);
+  let lateReward = 0;
+  if (!realtime) {
+    assert(await page.locator("#late-options").isHidden());
+    await context.clock.setFixedTime(now + 28000);
+    const prediction = page.locator("#late-options button").nth(3);
+    await prediction.waitFor();
+    lateReward = Number(await prediction.getAttribute("data-reward"));
+    await prediction.click();
+    const locked = new RegExp("翡翠之星.*估中得 " + lateReward + " 枚");
+    await page.locator("#late-status").filter({ hasText: locked }).waitFor();
+    await peer.locator("#late-status").filter({ hasText: locked }).waitFor();
+    assert(await peer.locator("#late-options").isHidden());
+  }
   await peer.locator("#meet-button").click();
   await waitText(peer, "#meet-summary", "已跑 0／6 場");
   if (!realtime) await context.clock.setFixedTime(now + 100000);
@@ -219,7 +232,7 @@ try {
         : t.picks.every((i) => order.slice(0, 2).includes(i));
     return sum + (won ? Math.round(t.price * 10) : 0);
   }, 0);
-  const expected = (920 + total).toLocaleString("zh-HK");
+  const expected = (920 + total + (order[0] === 3 ? lateReward : 0)).toLocaleString("zh-HK");
   await waitText(page, "#balance", expected);
   await waitText(peer, "#balance", expected);
   await page.reload();
@@ -312,6 +325,8 @@ try {
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
   await waitText(peer, "#meet-round-label", "第 2／6 場");
+  await waitText(page, "#pace-name", "快步速");
+  assert(await page.locator("#late-pick").isHidden());
   assert(await page.locator("#order-strip").isHidden());
   assert(await page.locator("#race-report").isHidden());
   assert(await peer.locator("#replay-deck").isHidden());

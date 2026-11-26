@@ -1,7 +1,9 @@
 import { LENGTH } from "./course.js";
 import { planLeadChanges } from "./gallop-lead.js";
 import { planRacingLines } from "./traffic.js";
-import { meetRound } from "./meet.js";
+import { meetNumber, meetRound } from "./meet.js";
+import { paceForRace, racePace } from "./race-pace.js";
+import { latePickOpen, latePickRewards } from "./late-pick.js";
 export { LENGTH } from "./course.js";
 export const RUN_OUT_SECONDS = 8;
 export const GATES = 3;
@@ -22,11 +24,14 @@ function uniform() {
   return (crypto.getRandomValues(new Uint32Array(1))[0] + 0.5) / 4294967296;
 }
 function raceCard(number, rng) {
-  const weights = strengths.map((base) => base * (0.7 + 0.65 * rng()));
+  const pace = paceForRace(meetRound(number), meetNumber(number));
+  const form = racePace({ pace });
+  const weights = strengths.map((base, i) => base * form.weight[i] * (0.7 + 0.65 * rng()));
   const total = weights.reduce((a, b) => a + b, 0);
   return {
     number,
     name: names[meetRound(number) - 1],
+    pace,
     probabilities: weights.map((w) => w / total),
     phase: "open",
     tickets: [],
@@ -92,6 +97,7 @@ export function cancel(game, id) {
 function drawPlan(race, rng) {
   // Sequential weighted sampling gives the same order probabilities used in the odds board.
   const remaining = race.probabilities.map((p, i) => ({ p, i }));
+  const pace = racePace(race);
   let finish = 67 + rng() * 3;
   const plan = new Array(6);
   while (remaining.length) {
@@ -102,8 +108,9 @@ function drawPlan(race, rng) {
     plan[i] = {
       finish,
       early:
-        [0.016, 0.006, -0.012, 0.010, -0.016, 0.002][i] + (rng() - 0.5) * 0.012,
-      surge: (rng() - 0.5) * 0.021,
+        [0.016, 0.006, -0.012, 0.010, -0.016, 0.002][i] + pace.early[i] + (rng() - 0.5) * 0.012,
+      surge: pace.surge[i] + (rng() - 0.5) * 0.021,
+      paceBias: pace.bias,
     };
     finish += 0.09 + rng() * 0.43;
   }
@@ -171,7 +178,7 @@ export function distance(h, t) {
   return (
     LENGTH *
     (start +
-      wave * wave * (h.early * (1 - u) + h.surge * Math.sin(2 * Math.PI * u)))
+      wave * wave * ((h.paceBias ?? 0) + h.early * (1 - u) + h.surge * Math.sin(2 * Math.PI * u)))
   );
 }
 export function snapshot(race, now = Date.now()) {
@@ -194,6 +201,18 @@ export function snapshotAt(race, t) {
     order,
     remaining: Math.max(0, Math.ceil(LENGTH - Math.max(...ds))),
   };
+}
+export function lockLatePick(game, runner, quotedReward, now = Date.now()) {
+  const r = game.race;
+  if (r.latePick) throw Error("每場只可預測一次。");
+  if (r.phase !== "running") throw Error("尾段預測只喺賽事進行時開放。");
+  const frame = snapshot(r, now);
+  if (!latePickOpen(r, frame)) throw Error("尾段預測只喺入直路至最後 200 米前開放。");
+  const rank = frame.order.indexOf(runner);
+  if (rank < 0) throw Error("請揀一匹有效嘅馬。");
+  const reward = latePickRewards[rank];
+  if (reward !== quotedReward) throw Error("走位已變，請按最新獎勵再揀。");
+  r.latePick = { runner, rank: rank + 1, reward };
 }
 export function settle(game, now = Date.now()) {
   const r = game.race;
@@ -218,7 +237,8 @@ export function settle(game, now = Date.now()) {
   }
   r.settlement = { order, ...totals };
   r.phase = "settled";
-  game.balance += totals.paid;
+  if (r.latePick) r.latePick.paid = r.latePick.runner === order[0] ? r.latePick.reward : 0;
+  game.balance += totals.paid + (r.latePick?.paid ?? 0);
   game.history.unshift({
     number: r.number,
     name: r.name,
@@ -227,6 +247,7 @@ export function settle(game, now = Date.now()) {
     paid: totals.paid,
     times: r.plan.map((h) => h.finish),
     tickets: structuredClone(r.tickets),
+    ...(r.latePick && { latePick: { ...r.latePick } }),
   });
   game.history = game.history.slice(0, 20);
   return true;

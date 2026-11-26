@@ -148,6 +148,20 @@
 .slip form {
   padding: 14px 17px 16px;
 }
+.pace-preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 8px;
+  margin-bottom: 9px;
+  border-left: 2px solid var(--green);
+  background: #252e21;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pace-preview strong { color: var(--green); white-space: nowrap; }
+.pace-preview p { color: #d6dfd0; }
 .market-tabs,
 .chips {
   display: grid;
@@ -996,6 +1010,66 @@
 #order-runners button:hover { background: #313a2d; }
 #order-runners .order-place { color: #b6c3ae; font-size: 11px; }
 #order-runners b { color: #101610; background: var(--silk); border-radius: 2px; padding: 3px 4px; }
+.late-pick {
+  padding: 8px 12px;
+  color: #e9f0e4;
+  background: #253022;
+  border-bottom: 1px solid #4b583c;
+}
+.late-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+}
+.late-heading h3 { color: var(--green); font-size: 13px; }
+.late-heading p { color: #d8e4cf; font-size: 12px; }
+#late-options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+#late-options button {
+  display: grid;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 5px;
+  border: 1px solid #526044;
+  border-radius: 4px;
+  color: var(--white);
+  background: #161f17;
+  text-align: left;
+}
+#late-options button:is(:hover, :focus-visible) { background: #36452c; }
+.pick-horse { white-space: nowrap; font-size: 11px; }
+.pick-horse b {
+  margin-right: 3px;
+  padding: 1px 3px;
+  border-radius: 2px;
+  color: #101610;
+  background: var(--silk);
+  font-variant-numeric: tabular-nums;
+}
+#late-options small { color: #becab7; font-size: 10px; }
+#late-options strong { color: var(--green); font-size: 12px; }
+.stage:is(:fullscreen, .expanded) .late-pick {
+  position: absolute;
+  z-index: 2;
+  top: 68px;
+  right: 16px;
+  width: min(390px, calc(100% - 24px));
+  border: 1px solid #ffffff50;
+  border-radius: 5px;
+  background: #192518f5;
+}
+@media (max-width: 850px) {
+  #late-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.stage .late-pick #late-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 720px) {
+  .stage:is(:fullscreen, .expanded) .late-pick { top: 114px; right: 12px; }
+}
 .stage:is(:fullscreen, .expanded) .order-strip {
   position: absolute; z-index: 2; top: 14px; left: 50%; transform: translateX(-50%);
   width: min(43%, 550px); background: #152015e8; border: 1px solid #ffffff35; border-radius: 5px;
