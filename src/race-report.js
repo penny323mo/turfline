@@ -52,7 +52,7 @@ export function createRaceReport(onReplay, formatTime) {
     }
     title.textContent = replay ? "重播戰報" : settled ? "分段重播" : "分段戰報";
     if (call.textContent !== report) call.textContent = report;
-    fullCall.textContent = replay && clip < 0 ? "" : report;
+    fullCall.textContent = clip < 0 ? "" : report;
     buttons.forEach((button, i) => {
       const reached = i <= index;
       const moment = moments[i];

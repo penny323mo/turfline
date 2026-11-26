@@ -26,6 +26,25 @@ globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() {} })
 
 const asset = (name) => readFile(new URL("../public/models/" + name, import.meta.url));
 
+test("both forelegs blend into the chest without overstretching the skin through a running stride", async () => {
+  const bytes = await asset("horse-ayan.glb");
+  await loadAyanHorse("data:model/gltf-binary;base64," + bytes.toString("base64"));
+  const horse = makeAyanHorse(horses[0]);
+  const body = horse.group.getObjectByName("Object_11");
+  const edges = [[7064, 1600], [10801, 3716], [12025, 4875], [13771, 8711], [4780, 293], [8618, 2442]];
+  const a = new Vector3(), b = new Vector3();
+  const length = ([i, j]) => body.getVertexPosition(i, a).applyMatrix4(body.matrixWorld)
+    .distanceTo(body.getVertexPosition(j, b).applyMatrix4(body.matrixWorld));
+  const rest = edges.map(length);
+  let stretch = 0;
+  for (let d = 60; d <= 67.2; d += 0.05) {
+    horse.seekDistance(d, true, 1200);
+    horse.group.updateMatrixWorld(true);
+    edges.forEach((edge, i) => { stretch = Math.max(stretch, length(edge) / rest[i]); });
+  }
+  assert.ok(stretch < 2.5, "Maximum chest edge stretch " + stretch.toFixed(2) + "×");
+});
+
 test("all six lanes turn continuously and measure the length of their own racing line", () => {
   for (const [i] of horses.entries()) {
     const offset = laneX(i);
@@ -317,7 +336,7 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
   playback.clipAction(clip).play();
   function samples(group) {
     const body = group.getObjectByName("Object_11");
-    const points = [11901,13645,12585,14273,3998].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
+    const points = [11901,13645,12585,14273,3998,7064,1600,10801,3716].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
     const jacket = group.getObjectByName("JockeyUpperBody"), reins = group.getObjectByName("RacingReins");
     for (const side of ["Right","Left"]) {
       const wrist = jacket.skeleton.bones.findIndex(b => b.name === "Jockey"+side+"Hand");

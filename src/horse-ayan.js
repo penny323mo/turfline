@@ -8,6 +8,7 @@ import { fitRacingReins } from './racing-reins.js';
 import { walkStride } from './parade.js';
 import { lateralBalance, sampleLead } from './gallop-lead.js';
 import { hoofPlant } from './hoof-plant.js';
+import { bindShoulderSkin } from './shoulder-skin.js';
 
 const SCALE = 0.444;
 const REST_GROUND = 2.217;
@@ -25,6 +26,8 @@ export async function loadAyanHorse(url = new URL('models/horse-ayan.glb', docum
       const rest = new THREE.AnimationMixer(gltf.scene);
       rest.clipAction(stride).play();
       rest.setTime(0);
+      gltf.scene.updateMatrixWorld(true);
+      bindShoulderSkin(gltf.scene.getObjectByName('Object_11'), SCALE, REST_GROUND);
       const length = strideLength(1);
       const clips = collections.map(w => makeGallop(gltf.scene, SCALE, REST_GROUND, w, length));
       asset = { walk: makeWalk(gltf.scene, SCALE, REST_GROUND), scene: gltf.scene, stride: clips[0], clips, byLength: new Map([[length, clips]]), turnClips: new Map() };

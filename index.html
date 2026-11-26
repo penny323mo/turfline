@@ -113,6 +113,13 @@
           <div class="order-strip" id="order-strip" role="group" aria-label="馬匹走位，點選馬號切換焦點" hidden>
             <span id="order-kind">走位</span><div id="order-runners"></div>
           </div>
+          <div class="live-story" id="live-story" hidden>
+            <p id="live-caption"></p>
+            <div class="live-chase-row">
+              <p id="live-chase"></p>
+              <button id="follow-ticket" type="button" hidden></button>
+            </div>
+          </div>
           <section class="late-pick" id="late-pick" aria-labelledby="late-pick-title" hidden>
             <div class="late-heading">
               <h3 id="late-pick-title">尾段預測</h3>
@@ -129,15 +136,11 @@
           </section>
           <div class="live-controls">
             <div class="camera-switch" id="camera-switch"></div>
-            <button
-              class="sounds"
-              id="sound"
-              aria-label="開啟賽場音效"
-              title="賽場音效"
-              aria-pressed="false"
-            >
-              音效 關
-            </button>
+            <div class="audio-controls" id="audio-controls">
+              <button class="sounds" id="sound" type="button" aria-label="開啟賽場音效"
+                title="賽場音效" aria-pressed="false">音效 關</button>
+              <button class="sounds" id="commentary" type="button" aria-pressed="false">報馬 關</button>
+            </div>
           </div>
           <div class="broadcast-strip">
             <div>

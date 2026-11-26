@@ -150,8 +150,10 @@ try {
     await context.clock.setFixedTime(now + 11000);
     await page.locator("#stage").scrollIntoViewIfNeeded();
     await waitText(page, "#cam-label", "導播　/　FIELD WIDE");
+    await page.locator("#live-caption").filter({ hasText: "開閘" }).waitFor();
     await context.clock.setFixedTime(now + 18000);
     await waitText(page, "#cam-label", "導播　/　TELEPHOTO");
+    await page.locator("#live-chase").filter({ hasText: /第 [1-6] 位/ }).waitFor();
     assert.equal(await page.locator('#report-moments [data-reached="true"]').count(), 1);
     assert.match(await page.locator("#report-call").innerText(), /出閘搶位/);
   }
@@ -187,6 +189,13 @@ try {
   );
   await page.locator('#stage #order-runners [data-runner="3"]').click();
   await waitText(page, "#hero-bib", "04");
+  if (!realtime) {
+    const follow = page.locator("#stage #follow-ticket");
+    await follow.waitFor({ state: "hidden" });
+    await page.selectOption("#fs-horse", "2");
+    await follow.click();
+    await waitText(page, "#hero-bib", "04");
+  }
   await page.locator("#stage #sound").click();
   await waitText(page, "#sound", "音效 開");
   assert.equal(await peer.locator("#sound").getAttribute("aria-pressed"), "false");
@@ -272,6 +281,7 @@ try {
   await waitText(page, "#balance", expected);
   await page.locator("#watch-replay").click();
   await waitText(page, "#live-status", "REPLAY");
+  assert(await page.locator("#live-story").isHidden());
   await waitText(peer, "#live-status", "RESULT");
   await page.locator("#replay-rate").selectOption("0.25");
   await page.locator("#replay-line").click();

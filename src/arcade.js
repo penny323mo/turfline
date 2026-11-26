@@ -35,6 +35,7 @@ import { createRaceReport } from "./race-report.js";
 import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, racesPerMeet } from "./meet.js";
 import { racePace } from "./race-pace.js";
 import { createLatePick, describeLatePick } from "./late-pick-ui.js";
+import { createLiveCommentary } from "./live-commentary.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
@@ -115,6 +116,10 @@ const cameraState = {
 };
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
+const showLiveCommentary = createLiveCommentary(runner => {
+  updateCamera(runner, cameraState.cam === "pack" ? "track" : cameraState.cam);
+  $("stage").focus({ preventScroll: true });
+});
 const showLatePick = createLatePick(async (runner, reward) => {
   if (!ready || busy) return "";
   if (await act(g => lockLatePick(g, runner, reward))) {
@@ -176,7 +181,7 @@ const quickFocus = document.createElement("select");
 quickFocus.className = "quick-focus";
 quickFocus.setAttribute("aria-label", "直播焦點馬匹");
 quickFocus.innerHTML = options;
-$("sound").before(quickFocus);
+$("audio-controls").before(quickFocus);
 const orderButtons = horses.map((horse, i) => {
   const button = document.createElement("button");
   button.type = "button";
@@ -653,6 +658,7 @@ function tick() {
     }
   }
   showRaceReport(r, snap?.t, replay);
+  showLiveCommentary(r, snap, cameraState.selected, !!replay);
   showLatePick(r, snap, !!replay, ready);
   syncSound(snap?.t);
   drawRadar(snap);
@@ -925,10 +931,13 @@ function fullInfo() {
   $("full").setAttribute("aria-label", full ? "離開全螢幕" : "全螢幕");
   if (full) $("stage").append($("replay-deck"));
   else document.querySelector(".broadcast-strip").after($("replay-deck"));
-  if (full) $("stage").append($("order-strip"), $("late-pick"));
-  else $("stage").after($("order-strip"), $("late-pick"));
-  if (full) $("stage").append($("sound"));
-  else quickFocus.after($("sound"));
+  if (full) {
+    $("stage").append($("order-strip"), $("late-pick"), $("audio-controls"));
+    $("fullscreen-call").before($("live-story"));
+  } else {
+    $("stage").after($("order-strip"), $("live-story"), $("late-pick"));
+    quickFocus.after($("audio-controls"));
+  }
   const actionAnchor = full ? $("fs-replay") : $("watch-replay");
   actionAnchor.before($("start"), $("speed"));
 }

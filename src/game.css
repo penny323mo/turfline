@@ -343,19 +343,23 @@
   border-color: #4e5d3c;
   background: #2b3424;
 }
-.stage > .sounds {
+.audio-controls { display: flex; align-items: center; gap: 3px; }
+.stage > .audio-controls {
   position: absolute;
   z-index: 3;
   top: 16px;
   right: 54px;
+}
+.stage > .audio-controls .sounds {
   min-height: 30px;
   color: #f3f5e9;
   background: #172018df;
   border-color: #ffffff55;
 }
-.stage > .sounds[aria-pressed="true"] { color: var(--green); }
+.stage > .audio-controls .sounds[aria-pressed="true"] { color: var(--green); }
 @media (max-width: 600px) {
-  .stage > .sounds { top: 10px; right: 48px; }
+  .stage > .audio-controls { top: 10px; right: 48px; }
+  .stage:is(:fullscreen, .expanded) .feed-id { max-width: calc(100vw - 245px); overflow: hidden; text-overflow: ellipsis; }
   .stage:is(:fullscreen, .expanded) .countdown { top: 112px; right: 12px; }
 }
 .camera-switch svg {
@@ -874,6 +878,32 @@
   font-variant-numeric: tabular-nums;
 }
 .race-bug span { padding: 2px 7px; }
+.live-story {
+  padding: 5px 11px;
+  background: #192218;
+  border-left: 2px solid var(--green);
+  color: var(--white);
+  font-size: 12px;
+  line-height: 1.4;
+}
+#live-caption { color: #e4f3dc; font-weight: 650; }
+.live-chase-row { display: flex; align-items: center; gap: 4px 9px; flex-wrap: wrap; }
+#live-chase { color: #ccd9c4; font-size: 11px; font-variant-numeric: tabular-nums; }
+#follow-ticket {
+  pointer-events: auto;
+  min-height: 30px;
+  color: var(--green);
+  background: #30412a;
+  padding: 2px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.stage .live-story { margin-top: 4px; max-width: min(420px, calc(100vw - 40px)); background: #152017ed; }
+.arcade .stage:is(:fullscreen, .expanded):has(.live-story:not([hidden])) .lower-third { bottom: 84px; }
+@media (pointer: coarse) {
+  #follow-ticket { min-height: 44px; }
+}
 #race-report {
   padding: 10px 14px 12px;
   background: #171e19;
