@@ -2,6 +2,7 @@ import { coursePoint, LENGTH } from "./course.js";
 import { paradePoint, ringCentre, ringRadius } from "./parade.js";
 import { horses } from "./data.js";
 import { linePose } from "./racing-line.js";
+import { portraitPredictionView } from "./prediction-view.js";
 
 // In a long field the runners fit along the long side of the display. All
 // positions use the same uniform scale, including the inside of the bend.
@@ -92,6 +93,8 @@ export function createRadar(canvas, onPick) {
       const bounds = el.getBoundingClientRect();
       if (bounds.height) bottom = Math.min(bottom,bounds.top-rect.top-radius-4);
     }
+    const prediction = portraitPredictionView(stage);
+    if (prediction) top = Math.max(top, prediction.top + radius);
     bottom = Math.max(bottom,top+1);
     const drawPath = (points, stroke, width, fill) => {
       ctx.beginPath();

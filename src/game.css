@@ -1136,6 +1136,21 @@
   #late-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .stage .late-pick #late-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (orientation: portrait) {
+  .stage .late-pick #late-options button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1px 3px;
+  }
+  .stage .late-pick .pick-horse { grid-column: 1 / -1; }
+  .stage .late-pick #late-options small { white-space: nowrap; }
+}
+@media (orientation: portrait) and (max-height: 600px) {
+  .stage:has(.late-pick #late-options:not([hidden])) .lower-third :is(.feed-kicker, .horse-title, .horse-en) {
+    display: none;
+  }
+  .stage:has(.late-pick #late-options:not([hidden])) .late-pick { top: 110px; }
+}
 @media (max-width: 720px) {
   .stage:is(:fullscreen, .expanded) .late-pick { top: 114px; right: 12px; }
 }

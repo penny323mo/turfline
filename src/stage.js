@@ -3,6 +3,7 @@ import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 import { horses, duration, laneX } from "./data.js";
 import { cameraShot, fieldCamera, tracksideSide } from "./broadcast.js";
+import { portraitPredictionView } from "./prediction-view.js";
 import { bendLean, coursePoint, LENGTH } from "./course.js";
 import { linePose, racingDistance } from "./racing-line.js";
 
@@ -151,6 +152,17 @@ export async function startStage(canvas, state, refresh) {
     lastRaceTime,
     lastShot;
   const canvasBox = canvas.parentElement;
+  let fullAspect = camera.aspect;
+  let predictionView = null;
+  const predictionPanel = document.getElementById("late-pick");
+  if (predictionPanel) {
+    const measure = new ResizeObserver(() => {
+      predictionView = portraitPredictionView(canvasBox);
+      cut = true;
+    });
+    for (const el of [canvasBox, lowerThird, predictionPanel, predictionPanel.querySelector("#late-options")])
+      measure.observe(el);
+  }
   let onScreen = true;
   new IntersectionObserver(([entry]) => {
     onScreen = entry.isIntersecting;
@@ -160,7 +172,7 @@ export async function startStage(canvas, state, refresh) {
       h = canvasBox.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    fullAspect = camera.aspect = w / h;
     camera.updateProjectionMatrix();
     cut = true;
   };
@@ -251,6 +263,10 @@ export async function startStage(canvas, state, refresh) {
     cameraFrame.makeRotationY(axis.heading).setPosition(axis.x, 0, axis.z);
     inverseFrame.copy(cameraFrame).invert();
     focus.copy(runnerPositions[state.selected]).applyMatrix4(inverseFrame);
+    const unobstructed = crossing || state.studyMode ? null : predictionView;
+    camera.aspect = unobstructed
+      ? unobstructed.width / (unobstructed.bottom - unobstructed.top)
+      : fullAspect;
     const venue = venueShots[shot];
     const screenWidthBias = Math.max(1, 1.35 / camera.aspect);
     let fov = 32, fogDensity = shot === "overview" ? 0.00045 : 0.0085;
@@ -270,7 +286,7 @@ export async function startStage(canvas, state, refresh) {
         field[i].z = look.z;
         field[i].angle -= axis.heading;
       });
-      const frame = fieldCamera(field, camera.aspect);
+      const frame = fieldCamera(field, camera.aspect, !!unobstructed);
       look.set(frame.x, frame.y, frame.z);
       eye.set(frame.eyeX, frame.eyeY, frame.eyeZ);
       fov = frame.fov;
@@ -365,7 +381,11 @@ export async function startStage(canvas, state, refresh) {
     if (shot === "pack") near = camera.position.distanceTo(aim) * 0.25;
     camera.near = near;
     camera.fov = fov / (state.zoom || 1);
-    if ((state.studyMode || crossing) && canvasBox.contains(replayDeck)) {
+    if (unobstructed) {
+      const { width, height, top, bottom } = unobstructed;
+      // Treat the clear strip as the lens frame, then extend it to fill the canvas.
+      camera.setViewOffset(width, bottom - top, 0, -top, width, height);
+    } else if ((state.studyMode || crossing) && canvasBox.contains(replayDeck)) {
       const { width, height, top } = canvasBox.getBoundingClientRect();
       const bottomInset = Math.max(replayDeck.getBoundingClientRect().height,
         top+height-lowerThird.getBoundingClientRect().top) + 4;

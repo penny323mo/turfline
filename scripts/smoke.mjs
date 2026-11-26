@@ -393,10 +393,20 @@ try {
     await page.locator("#start").click();
     await waitText(page, "#phase", "賽事進行中");
     await page.locator("#bug-distance").filter({ hasText: /彎位/ }).waitFor();
+    await page.locator("#full").click();
     await context.clock.setFixedTime(challengeStart + 7000);
-    const choice = page.locator("#late-options button").first();
+    const choice = page.locator("#stage #late-options button").first();
+    await choice.waitFor();
+    await page.locator("#order-runners button").first().click();
+    await page.waitForFunction(() => {
+      const box = selector => document.querySelector(selector).getBoundingClientRect();
+      const marker = box("#tracking-mark");
+      return marker.height > 0 && marker.top >= box("#late-pick").bottom &&
+        marker.bottom <= box("#stage .lower-third").top;
+    });
     await choice.filter({ hasText: /\+\d+ 分/ }).click();
     await page.locator("#late-status").filter({ hasText: /估中得 \d+ 分/ }).waitFor();
+    await page.locator("#full").click();
     await context.clock.setFixedTime(challengeStart + 90000);
     await page.locator("#challenge-score").filter({ hasText: /挑戰得分 (0|20|40|80) 分/ }).waitFor();
     await page.reload();
