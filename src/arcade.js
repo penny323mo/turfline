@@ -36,8 +36,27 @@ import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, rac
 import { racePace } from "./race-pace.js";
 import { createLatePick, describeLatePick } from "./late-pick-ui.js";
 import { createLiveCommentary } from "./live-commentary.js";
+import { challengeDay, localChallengeDay, newChallenge, startChallenge } from "./challenge.js";
 
 const $ = (id) => document.getElementById(id);
+const address = new URL(location.href);
+const challengeValue = address.searchParams.get("challenge");
+const challenge = challengeDay(challengeValue);
+const today = localChallengeDay();
+if (challenge) {
+  if (challengeValue === "daily") {
+    address.searchParams.set("challenge", challenge);
+    history.replaceState(history.state, "", address);
+  }
+  document.body.dataset.mode = "challenge";
+  const link = $("challenge-link");
+  link.href = challenge === today ? "./" : "?challenge=daily";
+  link.querySelector("span").textContent = challenge === today ? "返回正賽" : "玩今日挑戰";
+  $("challenge-date").textContent = challenge + " · 澳門時間";
+  $("challenge-card").hidden = false;
+  $("slip-heading").closest("aside").setAttribute("aria-label", "直路挑戰玩法");
+  document.title = "Turfline ｜ 每日直路挑戰";
+}
 const pad = (n) => String(n).padStart(2, "0");
 const format = (n) => n.toLocaleString("zh-HK");
 const time = (t) =>
@@ -67,7 +86,7 @@ const status = (msg) => {
 const audio = raceAudio();
 const finishCam = { id: "line", name: "終點定鏡", en: "FINISH LINE" };
 const raceCameras = [...cameras, finishCam, ...liveCameras.slice(cameras.length)];
-const initialView = readView();
+const initialView = challenge ? { horse: 0, cam: "pack" } : readView();
 let game = newGame(),
   save,
   stage,
@@ -123,11 +142,11 @@ const showLiveCommentary = createLiveCommentary(runner => {
 const showLatePick = createLatePick(async (runner, reward) => {
   if (!ready || busy) return "";
   if (await act(g => lockLatePick(g, runner, reward))) {
-    updateCamera(runner);
+    updateCamera(runner, challenge && cameraState.cam === "pack" ? "track" : cameraState.cam);
     return "";
   }
   return $("message").textContent;
-});
+}, challenge ? "分" : "枚");
 const showRaceReport = createRaceReport(index => {
   if (game.race.phase !== "settled") return;
   if (replay) playScope("moment", false, index);
@@ -245,7 +264,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
     row.querySelector(".follow").setAttribute("aria-pressed", String(active));
   }
   if (changed) {
-    if (!replay) saveView(horse, cam);
+    if (!replay && !challenge) saveView(horse, cam);
     stage?.cut();
     syncSound();
   }
@@ -425,17 +444,18 @@ function display() {
   $("meet-name").textContent = r.name;
   $("meet-number").textContent = "R" + pad(r.number);
   $("meet-day-label").textContent = "翠谷馬場 · 第 " + format(day) + " 個賽日";
+  if (challenge) $("meet-day-label").textContent = "翠谷馬場 · " + challenge;
   $("meet-round-label").textContent = "第 " + round + "／" + racesPerMeet + " 場";
   const pace = racePace(r);
   $("pace-name").textContent = pace.name;
   $("pace-hint").textContent = pace.hint;
-  $("bet-form").hidden = !opened;
-  $("closed").hidden = opened;
-  $("open-slip").hidden = !opened;
+  $("bet-form").hidden = !opened || !!challenge;
+  $("closed").hidden = opened || !!challenge;
+  $("open-slip").hidden = !opened || !!challenge;
   $("start").hidden = !opened;
   $("start").disabled = !ready || busy;
   const lastTicket = r.tickets.at(-1);
-  $("start").textContent = lastTicket ? "封盤開跑　▶" : "不投注開跑　▶";
+  $("start").textContent = challenge ? "開始挑戰　▶" : lastTicket ? "封盤開跑　▶" : "不投注開跑　▶";
   $("ticket-start").hidden = !opened || !lastTicket;
   $("ticket-start").disabled = !ready || busy;
   if (opened && lastTicket) {
@@ -447,7 +467,7 @@ function display() {
   $("phase").textContent = replay
     ? { finish: "終點重播", moment: "分段精華", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
     : opened
-    ? "接受投注"
+    ? challenge ? "最後一彎待播" : "接受投注"
     : done
       ? "賽事完成"
       : "賽事進行中";
@@ -478,6 +498,13 @@ function display() {
       slot.textContent = finishTime(r.plan[Number(slot.dataset.gap)].finish);
   if (done) $("next").onclick = () => act((g) => next(g), "新一場已開放投注。");
   $("result").hidden = !done;
+  const score = $("challenge-score");
+  score.hidden = !challenge || !done;
+  if (challenge && done) {
+    score.textContent = r.latePick
+      ? "挑戰得分 " + (r.latePick.paid ?? 0) + " 分 · " + describeLatePick(r.latePick, "分")
+      : "挑戰得分 0 分 · 今場冇揀馬";
+  }
   if (done) {
     const s = r.settlement;
     const net = s.paid - s.stake + (r.latePick?.paid ?? 0);
@@ -500,15 +527,14 @@ function display() {
         .join("") +
       '</div><p class="result-summary">頭馬時間 ' +
       finishTime(r.plan[s.order[0]].finish) +
-      "　·　本場淨額 " +
-      (net >= 0 ? "+" : "") +
-      format(net) +
-      " 枚</p>" +
+      (challenge ? "　·　挑戰得分 " + format(r.latePick?.paid ?? 0) + " 分"
+        : "　·　本場淨額 " + (net >= 0 ? "+" : "") + format(net) + " 枚") + "</p>" +
+      (challenge ? "" :
       '<button type="button" id="result-meet" class="meet-result" aria-haspopup="dialog">' +
       '<span>' + (standing.champion ? "賽日總冠軍" : "賽日積分領先") + '</span>' +
       '<strong>' + horses[leader.runner].name + ' · ' + leader.points + ' 分</strong>' +
-      icon("arrow") + '</button>';
-    $("result-meet").onclick = showMeet;
+      icon("arrow") + '</button>');
+    if (!challenge) $("result-meet").onclick = showMeet;
   }
   cameraState.speed = r.phase === "running" ? r.speed : 1;
   field();
@@ -567,7 +593,7 @@ function tick() {
   $("race-bug").hidden = !live && !replay;
   $("order-strip").hidden = !r.plan;
   if (!r.plan) {
-    $("distance-label").textContent = "起步至終點　1,200 米";
+    $("distance-label").textContent = challenge ? "入直路後揀頭馬" : "起步至終點　1,200 米";
     $("progress").style.width = "0%";
     $("countdown").hidden = true;
   } else {
@@ -652,7 +678,7 @@ function tick() {
       snap.t >= Math.max(...r.plan.map((h) => h.finish))
     ) {
       settling = true;
-      act((g) => settle(g), "賽果已確認，派彩已計入餘額。").finally(() => {
+      act((g) => settle(g), challenge ? "" : "賽果已確認，派彩已計入餘額。").finally(() => {
         settling = false;
       });
     }
@@ -669,6 +695,7 @@ $("closed").addEventListener("click", (e) => {
 });
 $("bet-form").onsubmit = (e) => {
   e.preventDefault();
+  if (challenge) return;
   const ticket = {
     market,
     picks: selectedPicks(),
@@ -693,19 +720,35 @@ $("ticket-list").onclick = (e) => {
     act((g) => cancel(g, id), "注單已取消，代幣已退回。");
   }
 };
-$("refill").onclick = () => act((g) => refill(g), "已領取 1,000 枚遊戲代幣。");
+$("refill").onclick = () => { if (!challenge) act((g) => refill(g), "已領取 1,000 枚遊戲代幣。"); };
 async function startWatching(ticket) {
   const started = await act(g => {
     if (ticket && !g.race.tickets.some(t => t.id === ticket.id))
       throw Error("呢張注單已取消，請重新揀馬。");
-    start(g);
-  }, "本場已封盤。");
+    if (challenge) startChallenge(g, challenge);
+    else start(g);
+  }, challenge ? "" : "本場已封盤。");
   if (!started) return;
   if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
   $("stage").focus({ preventScroll: true });
   if (!$("stage").contains($("speed"))) $("stage").scrollIntoView({ block: "nearest" });
 }
 $("start").onclick = () => startWatching();
+$("challenge-share").onclick = async () => {
+  const address = new URL(location.href);
+  address.search = "?challenge=" + challenge;
+  address.hash = "";
+  try {
+    await navigator.clipboard.writeText(address.href);
+    $("challenge-status").textContent = "挑戰連結已複製。";
+  } catch {
+    const field = $("challenge-url");
+    field.hidden = false;
+    field.value = address.href;
+    field.select();
+    $("challenge-status").textContent = "可選取並複製上面嘅連結。";
+  }
+};
 $("ticket-start").onclick = () => startWatching(game.race.tickets.at(-1));
 $("open-slip").onclick = () => {
   $("pick").focus({ preventScroll: true });
@@ -1061,7 +1104,9 @@ function snapshotIfRunning() {
   return replay ? snapshotAt(game.race, replay.position()) : game.race.plan ? snapshot(game.race) : null;
 }
 async function init() {
-  save = await openGameSave();
+  save = challenge
+    ? await openGameSave("challenge:" + challenge, () => newChallenge(challenge))
+    : await openGameSave();
   game = await save.read();
   save.channel?.addEventListener("message", () =>
     readLatest().catch(() => status("同步失敗，重新載入可繼續。")),

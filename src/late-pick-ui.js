@@ -1,13 +1,13 @@
 import { horses } from "./data.js";
 import { latePickEnd, latePickOpen, latePickRewards, latePickStart } from "./late-pick.js";
 
-export function describeLatePick(pick) {
+export function describeLatePick(pick, unit = "枚") {
   const label = horses[pick.runner].name + "（第 " + pick.rank + " 位時選中）";
-  if (pick.paid === undefined) return label + " · 估中得 " + pick.reward + " 枚";
-  return label + (pick.paid ? " · 估中 +" + pick.paid + " 枚" : " · 未中");
+  if (pick.paid === undefined) return label + " · 估中得 " + pick.reward + " " + unit;
+  return label + (pick.paid ? " · 估中 +" + pick.paid + " " + unit : " · 未中");
 }
 
-export function createLatePick(onPick) {
+export function createLatePick(onPick, unit = "枚") {
   const panel = document.getElementById("late-pick");
   const status = document.getElementById("late-status");
   const options = document.getElementById("late-options");
@@ -30,7 +30,7 @@ export function createLatePick(onPick) {
     panel.hidden = replay || (!race.latePick && (race.phase !== "running" || frame.t < 0));
     options.hidden = panel.hidden || !available;
     if (panel.hidden) return;
-    const message = race.latePick ? describeLatePick(race.latePick) : available
+    const message = race.latePick ? describeLatePick(race.latePick, unit) : available
       ? "免費揀頭馬 · 最後 " + latePickEnd + " 米截止"
       : frame.remaining > latePickStart ? "入直路開放 · 免費揀頭馬" : "預測已截止";
     if (message !== lastStatus) {
@@ -46,8 +46,8 @@ export function createLatePick(onPick) {
       button.disabled = !ready;
       button.dataset.reward = String(reward);
       button.children[1].textContent = gap;
-      button.lastElementChild.textContent = "+" + reward + " 枚";
-      button.setAttribute("aria-label", horses[runner].name + "，第 " + (rank + 1) + " 位，" + gap + "，估中得 " + reward + " 枚");
+      button.lastElementChild.textContent = "+" + reward + " " + unit;
+      button.setAttribute("aria-label", horses[runner].name + "，第 " + (rank + 1) + " 位，" + gap + "，估中得 " + reward + " " + unit);
     }
   };
 }

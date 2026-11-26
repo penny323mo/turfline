@@ -56,6 +56,9 @@
           <span><strong>賽日積分</strong><small id="meet-round-label">第 1／6 場</small></span>
         </button>
       </div>
+      <a class="challenge-link" id="challenge-link" href="?challenge=daily">
+        <i data-icon="flag"></i><span>每日直路挑戰</span><i data-icon="arrow"></i>
+      </a>
       <div class="game-grid">
         <section class="viewer-box" aria-label="3D 賽事轉播">
           <div class="stage" id="stage" tabindex="-1" aria-label="賽事畫面" role="group">
@@ -174,13 +177,28 @@
           </div>
         </section>
         <aside class="slip panel" aria-label="投注單">
-          <div class="panel-heading">
+          <div class="panel-heading" id="slip-heading">
             <div>
               <div class="eyebrow small">BET SLIP</div>
               <h2>投注單</h2>
             </div>
             <span class="slip-icon">◈</span>
           </div>
+          <section class="challenge-card" id="challenge-card" aria-labelledby="challenge-title" hidden>
+            <p class="challenge-date" id="challenge-date"></p>
+            <h2 id="challenge-title">直路預測</h2>
+            <p>由最後一彎起睇。入直路後可揀一次頭馬，最後 200 米截止。</p>
+            <dl class="challenge-points" aria-label="按揀馬一刻嘅名次計分">
+              <div><dt>第 1–2 位</dt><dd>20 分</dd></div>
+              <div><dt>第 3–4 位</dt><dd>40 分</dd></div>
+              <div><dt>第 5–6 位</dt><dd>80 分</dd></div>
+            </dl>
+            <p>每日一局。分享連結同朋友挑戰同一場。</p>
+            <p id="challenge-score" hidden></p>
+            <button type="button" id="challenge-share">複製挑戰連結</button>
+            <input type="url" id="challenge-url" aria-label="挑戰連結" readonly hidden />
+            <p id="challenge-status" role="status"></p>
+          </section>
           <form id="bet-form">
             <div class="pace-preview">
               <strong id="pace-name"></strong>

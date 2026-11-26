@@ -1,7 +1,7 @@
 import { newGame } from "./race.js";
 
 // Updating the wallet and its race in one read/write transaction serializes tabs and settlement.
-export async function openGameSave() {
+export async function openGameSave(key = "player", initial = newGame) {
   let db;
   try {
     db = await new Promise((resolve, reject) => {
@@ -13,7 +13,7 @@ export async function openGameSave() {
     await run(() => {});
   } catch {
     db?.close();
-    let local = newGame();
+    let local = initial();
     return {
       temporary: true,
       channel: null,
@@ -31,14 +31,14 @@ export async function openGameSave() {
       const mode = fn ? "readwrite" : "readonly";
       const tx = db.transaction("save", mode),
         store = tx.objectStore("save"),
-        request = store.get("player");
+      request = store.get(key);
       let result, error;
       request.onsuccess = () => {
         try {
-          result = request.result ?? newGame();
+          result = request.result ?? initial();
           if (fn) {
             fn(result);
-            store.put(result, "player");
+            store.put(result, key);
           }
         } catch (e) {
           error = e;
@@ -52,7 +52,7 @@ export async function openGameSave() {
   }
   const channel =
     typeof BroadcastChannel === "function"
-      ? new BroadcastChannel("turfline-game-v1")
+      ? new BroadcastChannel(key === "player" ? "turfline-game-v1" : "turfline-game-v1-" + key)
       : null;
   db.onversionchange = () => db.close();
   return {

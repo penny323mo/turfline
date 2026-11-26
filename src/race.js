@@ -42,11 +42,11 @@ function raceCard(number, rng) {
     settlement: null,
   };
 }
-export function newGame(rng = uniform) {
+export function newGame(rng = uniform, raceNumber = 1) {
   return {
     version: 1,
     balance: STARTING_FUNDS,
-    race: raceCard(1, rng),
+    race: raceCard(raceNumber, rng),
     history: [],
   };
 }

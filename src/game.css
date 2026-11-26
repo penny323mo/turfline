@@ -10,6 +10,45 @@
 .arcade nav button {
   font-family: inherit;
 }
+.challenge-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  margin: -6px 0 10px;
+  padding: 5px 10px;
+  border: 1px solid #475739;
+  border-radius: 5px;
+  color: var(--green);
+  background: #20291d;
+  font-size: 13px;
+  font-weight: 650;
+}
+.challenge-link:hover { background: #2f3e26; }
+.challenge-card { display: grid; gap: 11px; padding: 17px; }
+.challenge-card h2 { font-size: 19px; }
+.challenge-card p { color: #cbd8c5; font-size: 13px; line-height: 1.5; }
+.challenge-card .challenge-date { color: var(--dim); font-size: 11px; }
+.challenge-points { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; margin: 0; }
+.challenge-points div { background: #273225; padding: 7px 3px; border-radius: 4px; text-align: center; }
+.challenge-points dt { color: #cbd8c5; font-size: 11px; }
+.challenge-points dd { color: var(--green); font-size: 15px; font-weight: 700; margin: 0; }
+#challenge-score { padding: 8px; border-left: 2px solid var(--green); background: #263322; }
+#challenge-share, #challenge-url {
+  display: block;
+  min-height: 44px;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--green);
+  border: 1px solid #526344;
+  border-radius: 4px;
+  background: #192218;
+}
+#challenge-share:hover { background: #2f3e26; }
+#challenge-status:empty { display: none; }
+.arcade[data-mode="challenge"] :is(.wallet, #meet-number, #meet-button, #slip-heading, #history-button, .tickets) { display: none; }
+.arcade[data-mode="challenge"] .lower-grid { grid-template-columns: minmax(0, 1fr); }
+.arcade[data-mode="challenge"] .card-table :is(th, td):nth-child(n+4):nth-child(-n+5) { display: none; }
 .race-index {
   border-left: 1px solid #586446;
   margin-left: 9px;

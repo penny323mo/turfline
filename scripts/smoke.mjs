@@ -385,6 +385,30 @@ try {
   await page.locator("#full").click();
   assert(await page.locator(".broadcast-strip #speed").isVisible());
   await peer.close();
+  if (!realtime) {
+    const challengeStart = now + 100000;
+    await page.locator("#challenge-link").click();
+    await ready(page);
+    assert(await page.locator("#bet-form").isHidden());
+    await page.locator("#start").click();
+    await waitText(page, "#phase", "賽事進行中");
+    await page.locator("#bug-distance").filter({ hasText: /彎位/ }).waitFor();
+    await context.clock.setFixedTime(challengeStart + 7000);
+    const choice = page.locator("#late-options button").first();
+    await choice.filter({ hasText: /\+\d+ 分/ }).click();
+    await page.locator("#late-status").filter({ hasText: /估中得 \d+ 分/ }).waitFor();
+    await context.clock.setFixedTime(challengeStart + 90000);
+    await page.locator("#challenge-score").filter({ hasText: /挑戰得分 (0|20|40|80) 分/ }).waitFor();
+    await page.reload();
+    await ready(page);
+    assert(await page.locator("#start").isHidden());
+    assert(await page.locator("#challenge-score").isVisible());
+    await page.locator('nav a[href="./"]').click();
+    await ready(page);
+    await waitText(page, "#meet-number", "R02");
+    await waitText(page, "#ticket-count", "0 張");
+    assert(await page.locator("#challenge-card").isHidden());
+  }
   await page.locator('nav a[href*="studio.html"]').click();
   await page.waitForSelector("#stage[data-ready=true]", {
     state: "attached",
