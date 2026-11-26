@@ -200,6 +200,21 @@ try {
     assert(await page.locator("#late-options").isHidden());
     await context.clock.setFixedTime(now + 28000);
     const prediction = page.locator("#late-options button").nth(3);
+    // A reloaded race can reach the window before the scene has finished loading.
+    let releaseHorse;
+    const horseReady = new Promise(resolve => { releaseHorse = resolve; });
+    await page.route("**/models/horse-ayan.glb", async route => {
+      await horseReady;
+      await route.continue();
+    });
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await prediction.waitFor();
+      assert(await prediction.isDisabled());
+    } finally {
+      releaseHorse();
+    }
+    await ready(page);
     await prediction.waitFor();
     lateReward = Number(await prediction.getAttribute("data-reward"));
     await prediction.click();

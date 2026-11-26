@@ -25,7 +25,7 @@ export function createLatePick(onPick) {
     return button;
   });
   let lastStatus;
-  return (race, frame, replay) => {
+  return (race, frame, replay, ready) => {
     const available = latePickOpen(race, frame) && !race.latePick;
     panel.hidden = replay || (!race.latePick && (race.phase !== "running" || frame.t < 0));
     options.hidden = panel.hidden || !available;
@@ -43,6 +43,7 @@ export function createLatePick(onPick) {
       const button = buttons[runner];
       const gap = rank === 0 ? "領先" : "−" + (leader - frame.ds[runner]).toFixed(1) + " 米";
       const reward = latePickRewards[rank];
+      button.disabled = !ready;
       button.dataset.reward = String(reward);
       button.children[1].textContent = gap;
       button.lastElementChild.textContent = "+" + reward + " 枚";

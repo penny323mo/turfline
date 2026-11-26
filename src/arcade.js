@@ -653,7 +653,7 @@ function tick() {
     }
   }
   showRaceReport(r, snap?.t, replay);
-  showLatePick(r, snap, !!replay);
+  showLatePick(r, snap, !!replay, ready);
   syncSound(snap?.t);
   drawRadar(snap);
 }
