@@ -212,7 +212,7 @@ export function lockLatePick(game, runner, quotedReward, now = Date.now()) {
   if (rank < 0) throw Error("請揀一匹有效嘅馬。");
   const reward = latePickRewards[rank];
   if (reward !== quotedReward) throw Error("走位已變，請按最新獎勵再揀。");
-  r.latePick = { runner, rank: rank + 1, reward };
+  r.latePick = { runner, rank: rank + 1, reward, raceTime: frame.t };
 }
 export function settle(game, now = Date.now()) {
   const r = game.race;

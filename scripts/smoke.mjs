@@ -397,6 +397,7 @@ try {
     await context.clock.setFixedTime(challengeStart + 7000);
     const choice = page.locator("#stage #late-options button").first();
     await choice.waitFor();
+    assert.equal(await page.locator("#late-options .pick-trend[data-trend]").count(), 6);
     await page.locator("#order-runners button").first().click();
     await page.waitForFunction(() => {
       const box = selector => document.querySelector(selector).getBoundingClientRect();
@@ -413,6 +414,12 @@ try {
     await ready(page);
     assert(await page.locator("#start").isHidden());
     assert(await page.locator("#challenge-score").isVisible());
+    await page.locator("#review-pick").click();
+    await waitText(page, "#phase", "揀馬回看");
+    await waitText(page, "#hero-bib", "01");
+    await waitText(page, "#replay-play", "播放");
+    assert.match(await page.locator("#replay-pick-note").innerText(), /揀馬時第 [1-6] 位.*近 3 秒.*最終第 [1-6] 名/);
+    await page.locator("#replay-exit").click();
     await page.locator('nav a[href="./"]').click();
     await ready(page);
     await waitText(page, "#meet-number", "R02");

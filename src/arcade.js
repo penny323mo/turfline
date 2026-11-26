@@ -35,6 +35,7 @@ import { createRaceReport } from "./race-report.js";
 import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, racesPerMeet } from "./meet.js";
 import { racePace } from "./race-pace.js";
 import { createLatePick, describeLatePick } from "./late-pick-ui.js";
+import { latePickForm, trendSeconds } from "./late-pick.js";
 import { createLiveCommentary } from "./live-commentary.js";
 import { challengeDay, localChallengeDay, newChallenge, startChallenge } from "./challenge.js";
 
@@ -465,7 +466,7 @@ function display() {
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
   $("phase").textContent = replay
-    ? { finish: "終點重播", moment: "分段精華", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
+    ? { finish: "終點重播", moment: "分段精華", pick: "揀馬回看", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
     : opened
     ? challenge ? "最後一彎待播" : "接受投注"
     : done
@@ -798,6 +799,10 @@ $("fs-camera").onchange = (e) =>
   updateCamera(cameraState.selected, e.target.value);
 function showReplayControls() {
   const available = ready && game.race.phase === "settled";
+  const pickAvailable = available && Number.isFinite(game.race.latePick?.raceTime);
+  const pick = $("replay-scope").querySelector('[value="pick"]');
+  pick.hidden = pick.disabled = !pickAvailable;
+  $("review-pick").hidden = !pickAvailable || !!replay;
   $("watch-replay").hidden = $("fs-replay").hidden = !available || !!replay;
   $("replay-deck").hidden = !replay;
   $("stage").classList.toggle("replaying", !!replay);
@@ -815,7 +820,7 @@ function renderReplayClock(t) {
   if (crossing) $("crossing-rank").value = String(cameraState.selected);
   if (replay.scope !== "stride")
     $("subject-label").textContent = crossing ? "終點判讀" : replay.scope === "moment"
-      ? checkpoints[replay.momentIndex].label : "RACE REPLAY";
+      ? checkpoints[replay.momentIndex].label : replay.scope === "pick" ? "揀馬回看" : "RACE REPLAY";
   if (replay.scope === "stride") {
     const {previous,current,next} = replay.footsteps(cameraState.selected,t);
     $("previous-hoof").disabled = !previous;
@@ -845,6 +850,7 @@ function playScope(scope, first = false, momentIndex = 0) {
   const gait = scope === "stride", t = replay?.position() ?? 0;
   const rate = gait ? 0.25 : replay?.rate ?? 0.5;
   replay = finishReplay(game.race, undefined, scope, momentIndex);
+  scope = replay.scope;
   replay.setRate(rate);
   $("moment-picker").hidden = scope !== "moment";
   $("moment-picker").value = String(momentIndex);
@@ -858,8 +864,19 @@ function playScope(scope, first = false, momentIndex = 0) {
   $("replay-scrub").min = replay.from;
   $("replay-scrub").max = replay.to;
   $("replay-rate").value = String(replay.rate);
+  const pickNote = $("replay-pick-note");
+  pickNote.hidden = scope !== "pick";
   if (scope === "moment") {
     updateCamera(raceMoments(game.race)[momentIndex].leader, checkpoints[momentIndex].camera);
+  } else if (scope === "pick") {
+    const race = game.race;
+    const { runner, rank, raceTime } = race.latePick;
+    const frame = snapshotAt(race, raceTime);
+    const { gap, label } = latePickForm(frame, snapshotAt(race, raceTime - trendSeconds), runner);
+    const finalRank = race.settlement.order.indexOf(runner) + 1;
+    pickNote.textContent = horses[runner].name + " · 揀馬時第 " + rank + " 位、" + gap +
+      " · 近 " + trendSeconds + " 秒" + label + " · 最終第 " + finalRank + " 名";
+    updateCamera(runner, "pack");
   } else {
     updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
       first || (gait && !forceMap) || cameraState.cam === "line" ? "track" : cameraState.cam);
@@ -885,6 +902,11 @@ function leaveReplay() {
   stage?.cut();
 }
 $("watch-replay").onclick = $("fs-replay").onclick = () => beginReplay();
+$("review-pick").onclick = () => {
+  beginReplay("pick");
+  const deck = $("replay-deck");
+  if (!$("stage").contains(deck)) deck.scrollIntoView({ block: "nearest" });
+};
 $("replay-play").onclick = () => {
   replay.toggle();
   stage?.cut();

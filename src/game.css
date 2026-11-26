@@ -1024,6 +1024,12 @@
 .replay-clock { display: grid; gap: 1px; }
 .replay-clock select { color: #f0d197; background: #283229; border: 1px solid #56624d; border-radius: 4px; padding: 4px; font: inherit; font-size: 12px; }
 .replay-clock output { font: 600 15px var(--display); font-variant-numeric: tabular-nums; }
+#replay-pick-note {
+  grid-column: 1 / -1;
+  color: #e0eadb;
+  font-size: 12px;
+  line-height: 1.4;
+}
 #replay-scrub { width: 100%; margin: 0; accent-color: #e5c47f; min-height: 30px; }
 .replay-keys { display: flex; flex-wrap: wrap; gap: 5px; }
 .replay-keys button, .replay-keys select, #fs-replay {
@@ -1093,6 +1099,18 @@
 }
 .late-heading h3 { color: var(--green); font-size: 13px; }
 .late-heading p { color: #d8e4cf; font-size: 12px; }
+#review-pick {
+  min-height: 34px;
+  padding: 3px 7px;
+  border: 1px solid #526044;
+  border-radius: 4px;
+  color: var(--green);
+  background: #1a271c;
+  font-size: 12px;
+}
+@media (pointer: coarse) {
+  #review-pick { min-height: 44px; }
+}
 #late-options {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1121,6 +1139,9 @@
   font-variant-numeric: tabular-nums;
 }
 #late-options small { color: #becab7; font-size: 10px; }
+#late-options .pick-trend { grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
+#late-options .pick-trend[data-trend="gain"] { color: #d8f3a7; }
+#late-options .pick-trend[data-trend="loss"] { color: #ffc18f; }
 #late-options strong { color: var(--green); font-size: 12px; }
 .stage:is(:fullscreen, .expanded) .late-pick {
   position: absolute;

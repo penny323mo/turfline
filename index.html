@@ -127,6 +127,7 @@
             <div class="late-heading">
               <h3 id="late-pick-title">尾段預測</h3>
               <p id="late-status" aria-live="polite"></p>
+              <button id="review-pick" type="button" hidden>回看揀馬一刻</button>
             </div>
             <div id="late-options" role="group" aria-label="免費預測頭馬" hidden></div>
           </section>
@@ -161,7 +162,7 @@
             </div>
           </div>
           <div class="replay-deck" id="replay-deck" aria-label="賽事重播控制" hidden>
-            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="moment">分段精華</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
+            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="moment">分段精華</option><option value="pick" hidden disabled>揀馬回看</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
             <input id="replay-scrub" type="range" step="0.01" aria-label="重播賽事時間" />
             <div class="replay-keys">
               <button type="button" id="replay-play">暫停</button>
@@ -174,6 +175,7 @@
               <button type="button" id="next-hoof" aria-label="焦點馬下一蹄着地" hidden>下一蹄</button>
               <button type="button" id="replay-exit">返回賽果</button>
             </div>
+            <p id="replay-pick-note" hidden></p>
           </div>
         </section>
         <aside class="slip panel" aria-label="投注單">

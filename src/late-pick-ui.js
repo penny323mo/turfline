@@ -1,5 +1,6 @@
 import { horses } from "./data.js";
-import { latePickEnd, latePickOpen, latePickRewards, latePickStart } from "./late-pick.js";
+import { latePickEnd, latePickForm, latePickOpen, latePickRewards, latePickStart, trendSeconds } from "./late-pick.js";
+import { snapshotAt } from "./race.js";
 
 export function describeLatePick(pick, unit = "枚") {
   const label = horses[pick.runner].name + "（第 " + pick.rank + " 位時選中）";
@@ -16,7 +17,7 @@ export function createLatePick(onPick, unit = "枚") {
     button.type = "button";
     button.style.setProperty("--silk", horse.color);
     button.innerHTML = '<span class="pick-horse"><b>' + horse.number + '</b>' + horse.name +
-      '</span><small></small><strong></strong>';
+      '</span><small class="pick-gap"></small><strong></strong><small class="pick-trend"></small>';
     button.onclick = async () => {
       const message = await onPick(i, Number(button.dataset.reward));
       if (message && !options.hidden) status.textContent = message;
@@ -31,23 +32,26 @@ export function createLatePick(onPick, unit = "枚") {
     options.hidden = panel.hidden || !available;
     if (panel.hidden) return;
     const message = race.latePick ? describeLatePick(race.latePick, unit) : available
-      ? "免費揀頭馬 · 最後 " + latePickEnd + " 米截止"
+      ? "免費揀頭馬 · 近 " + trendSeconds + " 秒走勢 · 最後 " + latePickEnd + " 米截止"
       : frame.remaining > latePickStart ? "入直路開放 · 免費揀頭馬" : "預測已截止";
     if (message !== lastStatus) {
       status.textContent = message;
       lastStatus = message;
     }
     if (!available) return;
-    const leader = frame.ds[frame.order[0]];
+    const previous = snapshotAt(race, frame.t - trendSeconds);
     for (const [rank, runner] of frame.order.entries()) {
       const button = buttons[runner];
-      const gap = rank === 0 ? "領先" : "−" + (leader - frame.ds[runner]).toFixed(1) + " 米";
+      const { gap, label, trend } = latePickForm(frame, previous, runner);
       const reward = latePickRewards[rank];
       button.disabled = !ready;
       button.dataset.reward = String(reward);
       button.children[1].textContent = gap;
-      button.lastElementChild.textContent = "+" + reward + " " + unit;
-      button.setAttribute("aria-label", horses[runner].name + "，第 " + (rank + 1) + " 位，" + gap + "，估中得 " + reward + " " + unit);
+      button.children[2].textContent = "+" + reward + " " + unit;
+      button.lastElementChild.textContent = label;
+      button.lastElementChild.dataset.trend = trend;
+      button.setAttribute("aria-label", horses[runner].name + "，第 " + (rank + 1) + " 位，" + gap +
+        "，近 " + trendSeconds + " 秒" + label + "，估中得 " + reward + " " + unit);
     }
   };
 }

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { distance, lockLatePick, newGame, next, odds, settle, snapshot, start } from "../src/race.js";
-import { latePickRewards } from "../src/late-pick.js";
+import { latePickForm, latePickRewards } from "../src/late-pick.js";
+import { finishReplay } from "../src/replay.js";
 
 const midpointRoll = () => 0.5;
 
@@ -44,6 +45,7 @@ test("late picks lock inside the live window at the quoted reward and pay once",
   assert.throws(() => lockLatePick(game, 0, 20, 34000), /最後 200/);
   assert.throws(() => lockLatePick(game, 0, 20, 69000), /最後 200/);
   const during = 51000;
+  const raceTime = snapshot(game.race, during).t;
   const winner = game.race.plan.findIndex(horse => horse.finish === Math.min(...game.race.plan.map(h => h.finish)));
   const rank = snapshot(game.race, during).order.indexOf(winner);
   const reward = latePickRewards[rank];
@@ -58,7 +60,20 @@ test("late picks lock inside the live window at the quoted reward and pay once",
   assert.equal(settle(saved, 110000), false);
   assert.equal(saved.balance, 1000 + reward);
   assert.equal(saved.race.settlement.paid, 0);
-  assert.deepEqual(saved.history[0].latePick, { runner: winner, rank: rank + 1, reward, paid: reward });
+  assert.deepEqual(saved.history[0].latePick, { runner: winner, rank: rank + 1, reward, raceTime, paid: reward });
+  let clock = 100;
+  const replay = finishReplay(saved.race, () => clock, "pick");
+  assert.equal(replay.position(), raceTime);
+  assert.equal(replay.playing, false);
+  assert.equal(replay.from, raceTime - 3);
+  assert.ok(replay.to > saved.race.plan[winner].finish);
+  replay.toggle();
+  clock += 2;
+  assert.equal(replay.position(), raceTime + 1);
+  assert.equal(saved.balance, 1000 + reward);
+  const oldRace = structuredClone(saved.race);
+  delete oldRace.latePick.raceTime;
+  assert.equal(finishReplay(oldRace, () => clock, "pick").scope, "finish");
   next(saved, midpointRoll);
   assert.equal(saved.race.latePick, undefined);
 
@@ -68,4 +83,13 @@ test("late picks lock inside the live window at the quoted reward and pay once",
   settle(game, 100000);
   assert.equal(game.balance, 1000);
   assert.equal(game.history[0].latePick.paid, 0);
+});
+
+test("the live trend compares the same rivals through a change of leader", () => {
+  const now = { ds: [800, 798, 793, 792], order: [0, 1, 2, 3] };
+  const previous = { ds: [741, 743, 731, 733], order: [1, 0, 3, 2] };
+  assert.deepEqual(latePickForm(now, previous, 0), { gap: "領先", label: "拉開 4.0 米", trend: "gain" });
+  assert.deepEqual(latePickForm(now, previous, 1), { gap: "−2.0 米", label: "再落後 4.0 米", trend: "loss" });
+  assert.deepEqual(latePickForm(now, previous, 2), { gap: "−7.0 米", label: "追近 3.0 米", trend: "gain" });
+  assert.deepEqual(latePickForm(now, previous, 3), { gap: "−8.0 米", label: "差距相若", trend: "steady" });
 });

@@ -6,16 +6,18 @@ import { raceMoments } from "./race-moments.js";
 // seek without changing the official clock, the wallet, or another tab.
 export function finishReplay(race, clock = () => performance.now() / 1000, scope = "finish", momentIndex = 0) {
   const winnerTime = race.plan[race.settlement.order[0]].finish;
+  const pickTime = race.latePick?.raceTime;
+  if (scope === "pick" && !Number.isFinite(pickTime)) scope = "finish";
   let from = -GATES, to = runOutEnd(race);
   if (scope === "moment") {
     const moment = raceMoments(race)[momentIndex];
     from = Math.max(0, moment.time - 3);
     to = Math.min(to, moment.time + 2);
-  } else if (scope === "finish") {
-    from = Math.max(0, winnerTime - 4.5);
+  } else if (scope === "finish" || scope === "pick") {
+    from = Math.max(0, scope === "pick" ? pickTime - 3 : winnerTime - 4.5);
     to = Math.max(...race.plan.map((runner) => runner.finish)) + 0.65;
   } else if (scope === "pullup") from = winnerTime;
-  let cursor = from, anchor = clock(), moving = true, rate = 0.5;
+  let cursor = scope === "pick" ? pickTime : from, anchor = clock(), moving = scope !== "pick", rate = 0.5;
   const contacts = new Map();
   const position = () => Math.min(to, cursor + (moving ? Math.max(0, clock() - anchor) * rate : 0));
   function seek(value) {
