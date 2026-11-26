@@ -1,12 +1,20 @@
 import { GATES, runOutEnd } from "./race.js";
 import { hoofContacts } from "./race-audio.js";
+import { raceMoments } from "./race-moments.js";
 
 // The playback clock only reads the sealed race plan. Each viewer can pause or
 // seek without changing the official clock, the wallet, or another tab.
-export function finishReplay(race, clock = () => performance.now() / 1000, scope = "finish") {
+export function finishReplay(race, clock = () => performance.now() / 1000, scope = "finish", momentIndex = 0) {
   const winnerTime = race.plan[race.settlement.order[0]].finish;
-  const from = scope === "finish" ? Math.max(0, winnerTime - 4.5) : scope === "pullup" ? winnerTime : -GATES;
-  const to = scope === "finish" ? Math.max(...race.plan.map((runner) => runner.finish)) + 0.65 : runOutEnd(race);
+  let from = -GATES, to = runOutEnd(race);
+  if (scope === "moment") {
+    const moment = raceMoments(race)[momentIndex];
+    from = Math.max(0, moment.time - 3);
+    to = Math.min(to, moment.time + 2);
+  } else if (scope === "finish") {
+    from = Math.max(0, winnerTime - 4.5);
+    to = Math.max(...race.plan.map((runner) => runner.finish)) + 0.65;
+  } else if (scope === "pullup") from = winnerTime;
   let cursor = from, anchor = clock(), moving = true, rate = 0.5;
   const contacts = new Map();
   const position = () => Math.min(to, cursor + (moving ? Math.max(0, clock() - anchor) * rate : 0));
@@ -31,7 +39,7 @@ export function finishReplay(race, clock = () => performance.now() / 1000, scope
       if (stride == null) return null;
       return runnerContacts(runner).find(hit => hit.stride === stride && hit.hoof === (index === 0 ? 2 : 3));
     },
-    raceNumber: race.number, scope, from, to, winnerTime, position,
+    raceNumber: race.number, scope, momentIndex, from, to, winnerTime, position,
     footsteps(runner, t = position()) {
       const events = runnerContacts(runner);
       let lo = 0, hi = events.length;

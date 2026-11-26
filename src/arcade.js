@@ -28,6 +28,8 @@ import { openGameSave } from "./game-save.js";
 import { raceAudio } from "./race-audio.js";
 import { rightLead } from "./gallop-lead.js";
 import { finishReplay } from "./replay.js";
+import { checkpoints, raceMoments } from "./race-moments.js";
+import { createRaceReport } from "./race-report.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
@@ -82,7 +84,7 @@ const cameraState = {
   paused: false,
   visible: true,
   get finishReview() {
-    if (!replay || replay.playing || this.cam !== "line") return null;
+    if (!replay || replay.playing || replay.scope === "moment" || this.cam !== "line") return null;
     const crossing = replay.crossing(this.selected);
     return crossing && Math.abs(replay.position()-crossing.time) < 0.000001 ? crossing : null;
   },
@@ -108,6 +110,12 @@ const cameraState = {
 };
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
+const showRaceReport = createRaceReport(index => {
+  if (game.race.phase !== "settled") return;
+  if (replay) playScope("moment", false, index);
+  else beginReplay("moment", index);
+  if (!$("stage").contains($("replay-deck"))) $("stage").scrollIntoView({ block: "nearest" });
+}, finishTime);
 new ResizeObserver(() => drawRadar()).observe(mapCanvas);
 new ResizeObserver(() => {
   const deck = $("replay-deck");
@@ -403,7 +411,7 @@ function display() {
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
   $("phase").textContent = replay
-    ? { finish: "終點重播", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
+    ? { finish: "終點重播", moment: "分段精華", full: "全場重播", stride: "步姿慢鏡", pullup: "過線收步" }[replay.scope]
     : opened
     ? "接受投注"
     : done
@@ -602,6 +610,7 @@ function tick() {
       });
     }
   }
+  showRaceReport(r, snap?.t, replay);
   syncSound(snap?.t);
   drawRadar(snap);
 }
@@ -694,10 +703,11 @@ function renderReplayClock(t) {
   $("replay-scrub").setAttribute("aria-valuetext", labelTime);
   $("replay-time").textContent = labelTime;
   $("crossing-rank").hidden = !crossing;
-  $("replay-line").hidden = !!crossing || replay.scope === "stride";
+  $("replay-line").hidden = !!crossing || replay.scope === "stride" || replay.scope === "moment";
   if (crossing) $("crossing-rank").value = String(cameraState.selected);
   if (replay.scope !== "stride")
-    $("subject-label").textContent = crossing ? "終點判讀" : "RACE REPLAY";
+    $("subject-label").textContent = crossing ? "終點判讀" : replay.scope === "moment"
+      ? checkpoints[replay.momentIndex].label : "RACE REPLAY";
   if (replay.scope === "stride") {
     const {previous,current,next} = replay.footsteps(cameraState.selected,t);
     $("previous-hoof").disabled = !previous;
@@ -723,11 +733,13 @@ function focusFootfall(runner,t) {
   const nearest = current ?? (!previous || (next && next.time-t < t-previous.time) ? next : previous);
   replay.pauseAt(nearest?.time ?? t);
 }
-function playScope(scope, first = false) {
+function playScope(scope, first = false, momentIndex = 0) {
   const gait = scope === "stride", t = replay?.position() ?? 0;
   const rate = gait ? 0.25 : replay?.rate ?? 0.5;
-  replay = finishReplay(game.race, undefined, scope);
+  replay = finishReplay(game.race, undefined, scope, momentIndex);
   replay.setRate(rate);
+  $("moment-picker").hidden = scope !== "moment";
+  $("moment-picker").value = String(momentIndex);
   if (gait) focusFootfall(cameraState.selected,t);
   $("previous-hoof").hidden = $("next-hoof").hidden = !gait;
   $("replay-change").hidden = !gait || !game.race.plan[cameraState.selected].leadChanges;
@@ -738,18 +750,22 @@ function playScope(scope, first = false) {
   $("replay-scrub").min = replay.from;
   $("replay-scrub").max = replay.to;
   $("replay-rate").value = String(replay.rate);
-  updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
-    first || (gait && !forceMap) || cameraState.cam === "line" ? "track" : cameraState.cam);
+  if (scope === "moment") {
+    updateCamera(raceMoments(game.race)[momentIndex].leader, checkpoints[momentIndex].camera);
+  } else {
+    updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
+      first || (gait && !forceMap) || cameraState.cam === "line" ? "track" : cameraState.cam);
+  }
   stage?.cut();
   display();
 }
-function beginReplay() {
+function beginReplay(scope = "finish", momentIndex = 0) {
   if (replay || game.race.phase !== "settled") return;
   const picker = $("crossing-rank");
   picker.replaceChildren(...game.race.settlement.order.map((i,rank) =>
     new Option("第 " + (rank+1) + " 名壓線 · " + pad(horses[i].number) + " " + horses[i].name,String(i))));
   previousView = { horse: cameraState.selected, cam: cameraState.cam };
-  playScope("finish", true);
+  playScope(scope, true, momentIndex);
   $("replay-play").focus({ preventScroll: true });
 }
 $("replay-scope").onchange = e => playScope(e.target.value);
@@ -760,7 +776,7 @@ function leaveReplay() {
   previousView = null;
   stage?.cut();
 }
-$("watch-replay").onclick = $("fs-replay").onclick = beginReplay;
+$("watch-replay").onclick = $("fs-replay").onclick = () => beginReplay();
 $("replay-play").onclick = () => {
   replay.toggle();
   stage?.cut();

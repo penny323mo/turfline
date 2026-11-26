@@ -773,6 +773,72 @@
   font-variant-numeric: tabular-nums;
 }
 .race-bug span { padding: 2px 7px; }
+#race-report {
+  padding: 10px 14px 12px;
+  background: #171e19;
+  border-bottom: 1px solid var(--line);
+}
+.report-heading {
+  display: flex;
+  gap: 6px 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.report-heading h3 { margin: 0; color: var(--green); font-size: 13px; }
+.report-heading p { margin: 0; color: #e0e7dc; font-size: 12px; line-height: 1.5; }
+#report-moments {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+#report-moments button {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 8px;
+  text-align: left;
+  color: #edf2e6;
+  background: #263027;
+  border-radius: 3px;
+  border-top: 2px solid var(--marker);
+}
+#report-moments button:disabled { opacity: 1; cursor: default; }
+#report-moments button[data-reached="false"]:disabled { background: #1e261f; color: #b3bdae; }
+#report-moments button:is(:hover, :focus-visible):enabled,
+#report-moments button[aria-pressed="true"] { background: #374331; }
+.moment-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.moment-label svg { width: 10px; height: 10px; color: var(--green); }
+:disabled > .moment-label svg { visibility: hidden; }
+.moment-leader { font-size: 11px; color: #d2ddcc; }
+[data-reached="false"] .moment-leader { color: var(--dim); }
+#report-moments small { color: #b9c5b3; font-size: 11px; font-variant-numeric: tabular-nums; }
+#fullscreen-call { display: none; }
+.stage:is(:fullscreen, .expanded) #fullscreen-call:not(:empty) {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 3px 7px;
+  border-left: 2px solid var(--green);
+  background: #152017eb;
+  color: #edf2e6;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  #race-report { padding: 8px; }
+  .report-heading { display: grid; gap: 2px; }
+  .moment-label { font-size: 11px; }
+  #report-moments button { padding-inline: 4px; }
+  .stage.expanded .lower-third { bottom: 72px; }
+  .stage:is(:fullscreen, .expanded) #fullscreen-call { max-width: calc(100vw - 44px); }
+}
 .replaying .live { color: #152119; background: #e8c67a; }
 .replaying .live b { background: currentColor; }
 .replay-deck {

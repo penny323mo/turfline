@@ -88,6 +88,7 @@
                 <h2 id="hero-name">赤焰流星</h2>
               </div>
               <div class="horse-en" id="hero-en">CRIMSON COMET</div>
+              <div id="fullscreen-call" aria-hidden="true"></div>
             </div>
             <div class="broadcast-mark">
               <span class="signal-bars"><b></b><b></b><b></b><b></b></span
@@ -114,6 +115,13 @@
           <div class="order-strip" id="order-strip" role="group" aria-label="馬匹走位，點選馬號切換焦點" hidden>
             <span id="order-kind">走位</span><div id="order-runners"></div>
           </div>
+          <section id="race-report" aria-labelledby="report-title" hidden>
+            <div class="report-heading">
+              <h3 id="report-title">分段戰報</h3>
+              <p id="report-call" aria-live="polite" aria-atomic="true"></p>
+            </div>
+            <div id="report-moments"></div>
+          </section>
           <div class="live-controls">
             <div class="camera-switch" id="camera-switch"></div>
             <button
@@ -139,10 +147,11 @@
             <button class="start-btn" id="watch-replay" hidden>賽事重播　↺</button>
           </div>
           <div class="replay-deck" id="replay-deck" aria-label="賽事重播控制" hidden>
-            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
+            <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="moment">分段精華</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
             <input id="replay-scrub" type="range" step="0.01" aria-label="重播賽事時間" />
             <div class="replay-keys">
               <button type="button" id="replay-play">暫停</button>
+              <select id="moment-picker" aria-label="選擇分段精華" hidden></select>
               <select id="replay-rate" aria-label="重播速度"><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select>
               <button type="button" id="replay-line">頭馬壓線</button>
               <select id="crossing-rank" aria-label="選擇過線名次" hidden></select>

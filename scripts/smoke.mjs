@@ -78,6 +78,7 @@ try {
     return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
   }));
   await waitText(page, "#subject-label", "亮相圈");
+  assert(await page.locator("#race-report").isHidden());
   await page.locator('[data-cam="radar"]').click();
   assert(await page.locator("#race-map").isVisible());
   await page.selectOption(".quick-focus","2");
@@ -137,11 +138,15 @@ try {
   await waitText(page, "#balance", "920");
   await waitText(page, "#ticket-count", "8 張");
   if (!realtime) {
+    assert.equal(await page.locator('#report-moments [data-reached="true"]').count(), 0);
+    assert.equal(await page.locator('#report-moments button:enabled').count(), 0);
     await context.clock.setFixedTime(now + 11000);
     await page.locator("#stage").scrollIntoViewIfNeeded();
     await waitText(page, "#cam-label", "導播　/　FIELD WIDE");
     await context.clock.setFixedTime(now + 18000);
     await waitText(page, "#cam-label", "導播　/　TELEPHOTO");
+    assert.equal(await page.locator('#report-moments [data-reached="true"]').count(), 1);
+    assert.match(await page.locator("#report-call").innerText(), /出閘搶位/);
   }
   for (const [cam, num] of [
     ["radar", 3],
@@ -206,6 +211,22 @@ try {
   await ready(page);
   await waitText(page, "#balance", expected);
   await waitText(page, "#hero-bib", "04");
+  const moments = page.locator("#report-moments button");
+  assert.equal(await page.locator("#report-moments button:enabled").count(), 4);
+  const stretchLeader = await moments.nth(1).locator(".moment-leader").innerText();
+  await moments.nth(1).click();
+  await waitText(page, "#phase", "分段精華");
+  await waitText(page, "#hero-name", stretchLeader);
+  assert.equal(await page.locator("#stage").getAttribute("data-shot"), "aerial");
+  const scrub = page.locator("#replay-scrub");
+  assert.equal(Number(await scrub.getAttribute("max")) - Number(await scrub.getAttribute("min")), 5);
+  await page.locator("#moment-picker").selectOption("3");
+  await waitText(page, "#hero-bib", String(order[0] + 1).padStart(2, "0"));
+  await waitText(page, "#cam-label", "CAM 01　/　TRACKSIDE");
+  await waitText(peer, "#live-status", "RESULT");
+  await page.locator("#replay-exit").click();
+  await waitText(page, "#hero-bib", "04");
+  await waitText(page, "#balance", expected);
   await page.locator("#watch-replay").click();
   await waitText(page, "#live-status", "REPLAY");
   await waitText(peer, "#live-status", "RESULT");
@@ -262,6 +283,11 @@ try {
   await page.locator("#history-button").click();
   assert.equal(await page.locator(".history-row").count(), 1);
   await page.locator("#close").click();
+  await peer.locator("#report-moments button").nth(2).click();
+  await waitText(peer, "#phase", "分段精華");
+  await waitText(peer, "#subject-label", "最後 200 米");
+  assert.equal(await peer.locator("#race-map").isVisible(), !dual);
+  await peer.locator("#replay-exit").click();
   await peer.locator("#watch-replay").click();
   await peer.locator("#replay-scope").selectOption("full");
   await peer.locator("#replay-line").click();
@@ -271,6 +297,7 @@ try {
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
   assert(await page.locator("#order-strip").isHidden());
+  assert(await page.locator("#race-report").isHidden());
   assert(await peer.locator("#replay-deck").isHidden());
   await page.locator('[data-price="place"][data-runner="4"]').click();
   assert.equal(await page.locator("#pick").inputValue(), "4");
