@@ -1296,7 +1296,7 @@ dialog li span {
 .model-picker #model-status {
   color: #fba999;
 }
-#tracking-mark {
+#tracking-mark, #rival-mark {
   pointer-events: none;
   position: absolute;
   z-index: 1;
@@ -1307,6 +1307,7 @@ dialog li span {
   font: italic 700 14px/1 var(--display);
   clip-path: polygon(0 0, 100% 0, 100% 80%, 60% 80%, 50% 100%, 40% 80%, 0 80%);
 }
+#rival-mark { background: #f3e2ba; }
 .stage:fullscreen .lower-third {
   bottom: 32px;
   left: 32px;

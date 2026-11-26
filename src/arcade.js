@@ -137,13 +137,13 @@ const cameraState = {
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
 const showLiveCommentary = createLiveCommentary(runner => {
-  updateCamera(runner, cameraState.cam === "pack" ? "track" : cameraState.cam);
+  updateCamera(runner, cameraState.cam === "pack" ? "duel" : cameraState.cam);
   $("stage").focus({ preventScroll: true });
 });
 const showLatePick = createLatePick(async (runner, reward) => {
   if (!ready || busy) return "";
   if (await act(g => lockLatePick(g, runner, reward))) {
-    updateCamera(runner, challenge && cameraState.cam === "pack" ? "track" : cameraState.cam);
+    updateCamera(runner, challenge && cameraState.cam === "pack" ? "duel" : cameraState.cam);
     return "";
   }
   return $("message").textContent;
@@ -251,7 +251,7 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   $("hero-name").textContent = h.name;
   $("hero-en").textContent = h.en.toUpperCase();
   const distance = cam === "auto" ? cameraState.courseFrame()?.ds[horse] ?? 0 : 0;
-  showShot(cameraShot(cam, distance));
+  showShot(cameraShot(cam, distance, !!game.race.plan));
   $("tracking-mark").textContent = pad(h.number);
   $("fs-horse").value = quickFocus.value = String(horse);
   $("fs-camera").value = forceMap ? "radar" : cam;
@@ -876,7 +876,7 @@ function playScope(scope, first = false, momentIndex = 0) {
     const finalRank = race.settlement.order.indexOf(runner) + 1;
     pickNote.textContent = horses[runner].name + " · 揀馬時第 " + rank + " 位、" + gap +
       " · 近 " + trendSeconds + " 秒" + label + " · 最終第 " + finalRank + " 名";
-    updateCamera(runner, "pack");
+    updateCamera(runner, "duel");
   } else {
     updateCamera(first ? game.race.settlement.order[0] : cameraState.selected,
       first || (gait && !forceMap) || cameraState.cam === "line" ? "track" : cameraState.cam);
@@ -1020,8 +1020,8 @@ document.addEventListener("keydown", (e) => {
     /INPUT|SELECT/.test(e.target.tagName)
   )
     return;
-  if (!forceMap && /^[1-7]$/.test(e.key))
-    updateCamera(cameraState.selected, liveCameras[Number(e.key) - 1].id);
+  const shortcut = /^[1-9]$/.test(e.key) && liveCameras[Number(e.key) - 1];
+  if (!forceMap && shortcut) updateCamera(cameraState.selected, shortcut.id);
 });
 function dialog(title, html) {
   $("dialog-title").textContent = title;
@@ -1073,7 +1073,7 @@ $("rules-button").onclick = () =>
     "遊戲玩法 · v" + version,
     "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。可以先睇本場步速，再選馬同注碼。每注由 10 枚起，以 10 枚為單位。同場可落多張注單，開跑前可取消。</span></li>" +
     "<li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li>" +
-    "<li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li>" +
+    "<li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播，8 用雙駒跟拍睇焦點馬同對手。可選 2× 轉播。</span></li>" +
     "<li><b>尾段預測</b><span>頭馬轉入直路後，可以免費揀一次頭馬，最後 200 米截止。揀馬時排得越後，估中獎勵越多。</span></li>" +
     "<li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
   );

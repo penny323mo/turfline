@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { createLandscape } from "./landscape.js";
 import { loadAyanHorse, makeAyanHorse } from "./horse-ayan.js";
 import { horses, duration, laneX } from "./data.js";
-import { cameraShot, fieldCamera, tracksideSide } from "./broadcast.js";
+import { cameraShot, chaseRival, fieldCamera, tracksideSide } from "./broadcast.js";
 import { portraitPredictionView } from "./prediction-view.js";
 import { bendLean, coursePoint, LENGTH } from "./course.js";
 import { linePose, racingDistance } from "./racing-line.js";
@@ -144,6 +144,8 @@ export async function startStage(canvas, state, refresh) {
   const replayDeck = document.getElementById("replay-deck"), orderStrip = document.getElementById("order-strip");
   const finishNose = document.getElementById("finish-nose"), finishGuide = document.getElementById("finish-guide");
   const nosePoint = new THREE.Vector3();
+  const trackingMark = document.getElementById("tracking-mark"), rivalMark = document.getElementById("rival-mark");
+  const markerPoint = new THREE.Vector3();
   const lowerThird = canvas.parentElement.querySelector(".lower-third");
   let cut = true,
     lastFrame = 0,
@@ -208,6 +210,13 @@ export async function startStage(canvas, state, refresh) {
     });
   }
   let lastTrackSide, lastParade;
+  function placeMarker(marker, runner) {
+    markerPoint.copy(runnerPositions[runner]);
+    markerPoint.y = 2.8;
+    markerPoint.project(camera);
+    marker.style.left = (markerPoint.x + 1) * 50 + "%";
+    marker.style.top = (1 - markerPoint.y) * 50 + "%";
+  }
   function place(dt) {
     const t = state.time;
     const crossing = state.finishReview;
@@ -218,7 +227,9 @@ export async function startStage(canvas, state, refresh) {
     if (parade !== lastParade) cut = true;
     lastParade = parade;
     const z = race ? race.ds[state.selected] : 10 + t * (1190 / duration);
-    const shot = cameraShot(state.cam, race ? z : 0);
+    const shot = cameraShot(state.cam, race ? z : 0, !!race);
+    const rival = shot === "duel" ? chaseRival(race.order, race.order.indexOf(state.selected)) : undefined;
+    const groupShot = shot === "pack" || shot === "duel";
     if (shot !== lastShot) {
       cut = true;
       lastShot = shot;
@@ -258,12 +269,21 @@ export async function startStage(canvas, state, refresh) {
         patches[i].rotation.y = pt.heading;
       }
     }
-    const cameraDistance = shot === "pack" && race ? (Math.min(...race.ds) + Math.max(...race.ds)) / 2 : z;
+    const cameraDistance = rival !== undefined ? (z + race.ds[rival]) / 2
+      : shot === "pack" && race ? (Math.min(...race.ds) + Math.max(...race.ds)) / 2 : z;
     const axis = parade ? (shot === "pack" ? ringCentre : paradePoint(state.selected,paradeTime)) : onRaceCourse ? coursePoint(cameraDistance) : { x: 0, z: cameraDistance, heading: 0 };
     cameraFrame.makeRotationY(axis.heading).setPosition(axis.x, 0, axis.z);
     inverseFrame.copy(cameraFrame).invert();
     focus.copy(runnerPositions[state.selected]).applyMatrix4(inverseFrame);
-    const unobstructed = crossing || state.studyMode ? null : predictionView;
+    let unobstructed = crossing || state.studyMode ? null : predictionView;
+    if (shot === "duel" && !unobstructed && canvasBox.contains(orderStrip)) {
+      const { top: origin, width, height } = canvasBox.getBoundingClientRect();
+      const headerBottom = width < height && canvasBox.contains(predictionPanel) && !predictionPanel.hidden
+        ? predictionPanel.getBoundingClientRect().bottom : orderStrip.getBoundingClientRect().bottom;
+      const top = headerBottom - origin + 12;
+      const bottom = lowerThird.getBoundingClientRect().top - origin - 8;
+      if (bottom > top) unobstructed = { width, height, top, bottom };
+    }
     camera.aspect = unobstructed
       ? unobstructed.width / (unobstructed.bottom - unobstructed.top)
       : fullAspect;
@@ -279,14 +299,16 @@ export async function startStage(canvas, state, refresh) {
           .sub(look)
           .multiplyScalar(1.9 / camera.aspect)
           .add(look);
-    } else if (shot === "pack") {
-      runnerPositions.forEach((p, i) => {
-        look.copy(p).applyMatrix4(inverseFrame);
+    } else if (groupShot) {
+      const indices = rival === undefined ? field.keys() : [state.selected, rival];
+      for (const i of indices) {
+        look.copy(runnerPositions[i]).applyMatrix4(inverseFrame);
         field[i].x = look.x;
         field[i].z = look.z;
         field[i].angle -= axis.heading;
-      });
-      const frame = fieldCamera(field, camera.aspect, !!unobstructed);
+      }
+      const subjects = rival === undefined ? field : [field[state.selected], field[rival]];
+      const frame = fieldCamera(subjects, camera.aspect, !!unobstructed || shot === "duel");
       look.set(frame.x, frame.y, frame.z);
       eye.set(frame.eyeX, frame.eyeY, frame.eyeZ);
       fov = frame.fov;
@@ -363,7 +385,7 @@ export async function startStage(canvas, state, refresh) {
       fov = 17.4;
     }
     scene.fog.density = fogDensity;
-    land.update(parade ? ringCentre.z : venue ? venue.target[2] : z, race?.t ?? 0, shot !== "pack", parade ? ringCentre : null);
+    land.update(parade ? ringCentre.z : venue ? venue.target[2] : z, race?.t ?? 0, !groupShot, parade ? ringCentre : null);
     const a = cut ? 1 : 1 - Math.exp(-15 * Math.max(dt, 1 / 60));
     cameraEye.lerp(eye, a);
     cameraAim.lerp(look, a);
@@ -378,7 +400,7 @@ export async function startStage(canvas, state, refresh) {
     else camera.layers.enable(housingLayer);
     let near = 0.08;
     // Keep enough depth precision to separate the turf and its painted course.
-    if (shot === "pack") near = camera.position.distanceTo(aim) * 0.25;
+    if (groupShot) near = camera.position.distanceTo(aim) * 0.25;
     camera.near = near;
     camera.fov = fov / (state.zoom || 1);
     if (unobstructed) {
@@ -442,15 +464,16 @@ export async function startStage(canvas, state, refresh) {
     }
     sun.position.set(aim.x - 18, 36, aim.z + 20);
     sun.target.position.copy(aim);
-    const marker = document.getElementById("tracking-mark");
-    if (marker) {
-      marker.hidden = Boolean(venue) || !!crossing || shot === "track" || shot === "rider";
-      if (!marker.hidden) {
-        const pt = runnerPositions[state.selected].clone();
-        pt.y = 2.8;
-        pt.project(camera);
-        marker.style.left = (pt.x + 1) * 50 + "%";
-        marker.style.top = (-pt.y + 1) * 50 + "%";
+    if (trackingMark) {
+      trackingMark.hidden = Boolean(venue) || !!crossing || shot === "track" || shot === "rider";
+      if (!trackingMark.hidden) placeMarker(trackingMark, state.selected);
+    }
+    if (rivalMark) {
+      rivalMark.hidden = rival === undefined;
+      if (!rivalMark.hidden) {
+        const bib = String(horses[rival].number).padStart(2, "0");
+        if (rivalMark.textContent !== bib) rivalMark.textContent = bib;
+        placeMarker(rivalMark, rival);
       }
     }
     cut = false;

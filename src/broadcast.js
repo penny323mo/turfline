@@ -8,6 +8,7 @@ export const liveCameras = [...cameras,
   { id: "auto", name: "自動導播", en: "DIRECTOR", icon: "broadcast" },
   { id: "radar", name: "走位圖", en: "RACE RADAR", icon: "focus" },
   riderCamera,
+  { id: "duel", name: "雙駒跟拍", en: "DUEL CAM", icon: "focus" },
 ];
 const viewKey = "turfline.spectator-view";
 
@@ -26,7 +27,8 @@ export function saveView(horse, cam) {
 }
 
 // Cuts are determined by where the chosen horse is now, including on a seek.
-export function cameraShot(mode, distance) {
+export function cameraShot(mode, distance, hasRace = true) {
+  if (mode === "duel" && !hasRace) return "pack";
   if (mode !== "auto") return mode;
   if (distance < 110) return "track";
   if (distance < 400) return "pack";
@@ -34,6 +36,10 @@ export function cameraShot(mode, distance) {
   if (distance < 860) return "aerial";
   if (distance < LENGTH - 180) return "pack";
   return "track";
+}
+
+export function chaseRival(order, rank) {
+  return order[rank === 0 ? 1 : rank - 1];
 }
 
 // Use the screen's long axis for the length of the field. Fit the full box in

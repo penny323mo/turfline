@@ -407,6 +407,7 @@ try {
     });
     await choice.filter({ hasText: /\+\d+ 分/ }).click();
     await page.locator("#late-status").filter({ hasText: /估中得 \d+ 分/ }).waitFor();
+    await page.locator('#stage[data-shot="duel"] #rival-mark').waitFor();
     await page.locator("#full").click();
     await context.clock.setFixedTime(challengeStart + 90000);
     await page.locator("#challenge-score").filter({ hasText: /挑戰得分 (0|20|40|80) 分/ }).waitFor();
@@ -418,6 +419,12 @@ try {
     await waitText(page, "#phase", "揀馬回看");
     await waitText(page, "#hero-bib", "01");
     await waitText(page, "#replay-play", "播放");
+    await page.waitForFunction(() => {
+      const rival = document.querySelector('#stage[data-shot="duel"] #rival-mark:not([hidden])');
+      const order = [...document.querySelectorAll("#order-runners button b")].map(b => b.textContent);
+      const rank = order.indexOf("01");
+      return rival && rival.textContent === order[rank === 0 ? 1 : rank - 1];
+    });
     assert.match(await page.locator("#replay-pick-note").innerText(), /揀馬時第 [1-6] 位.*近 3 秒.*最終第 [1-6] 名/);
     await page.locator("#replay-exit").click();
     await page.locator('nav a[href="./"]').click();

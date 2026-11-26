@@ -1,6 +1,7 @@
 import { bendEntry, bendExit, LENGTH } from "./course.js";
 import { horses } from "./data.js";
 import { snapshotAt } from "./race.js";
+import { chaseRival } from "./broadcast.js";
 
 const name = runner => horses[runner].name;
 
@@ -15,7 +16,7 @@ const calls = [
 function chaseStatus(race, frame, runner) {
   const rank = frame.order.indexOf(runner);
   if (frame.ds[runner] >= LENGTH) return "第 " + (rank + 1) + " 名衝線";
-  const rival = rank === 0 ? frame.order[1] : frame.order[rank - 1];
+  const rival = chaseRival(frame.order, rank);
   const gap = Math.abs(frame.ds[runner] - frame.ds[rival]);
   const prefix = "第 " + (rank + 1) + " 位";
   const margin = gap < 0.1 ? "同" + name(rival) + "並排"
@@ -23,7 +24,7 @@ function chaseStatus(race, frame, runner) {
   const before = snapshotAt(race, frame.t - 2);
   const oldRank = before.order.indexOf(runner);
   const oldGap = Math.abs(before.ds[runner] - before.ds[rival]);
-  const adjacent = oldRank === rank && before.order[rank === 0 ? 1 : rank - 1] === rival;
+  const adjacent = oldRank === rank && chaseRival(before.order, oldRank) === rival;
   let trend = "";
   if (frame.t >= 2 && adjacent && Math.abs(gap - oldGap) >= 0.8) {
     if (rank === 0) trend = gap > oldGap ? " · 拉開緊" : " · 次名追近";

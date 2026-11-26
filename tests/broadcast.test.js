@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PerspectiveCamera, Vector3 } from "three";
-import { cameraShot, fieldCamera, tracksideSide } from "../src/broadcast.js";
+import { cameraShot, chaseRival, fieldCamera, tracksideSide } from "../src/broadcast.js";
 import { linePose } from "../src/racing-line.js";
 import { newGame, start, snapshotAt } from "../src/race.js";
 import { coursePoint } from "../src/course.js";
@@ -9,9 +9,18 @@ import { coursePoint } from "../src/course.js";
 test("director cuts follow the selected horse's distance and manual shots remain fixed", () => {
   const distances = [0, 150, 550, 720, 930, 1199, 1222];
   assert.deepEqual(distances.map((d) => cameraShot("auto", d)), ["track", "pack", "tele", "aerial", "pack", "track", "track"]);
-  for (const manual of ["track", "pack", "tele", "aerial", "line"])
+  for (const manual of ["track", "pack", "tele", "aerial", "line", "duel"])
     assert.ok(distances.every((d) => cameraShot(manual, d) === manual));
   assert.equal(cameraShot("auto", 150), cameraShot("auto", 175));
+});
+
+test("duel coverage follows the next racing position and looks back from the lead", () => {
+  const pursuing = [1, 3, 0, 5, 4, 2];
+  const leading = [4, 1, 3, 0, 5, 2];
+  assert.equal(chaseRival(pursuing, pursuing.indexOf(4)), 5);
+  assert.equal(chaseRival(leading, leading.indexOf(4)), 1);
+  assert.equal(chaseRival(leading, leading.indexOf(2)), 5);
+  assert.equal(cameraShot("duel", 0, false), "pack");
 });
 
 test("whole-field perspective fits all six mounted silhouettes on desktop, portrait and old race plans", () => {
