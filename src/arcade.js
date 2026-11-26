@@ -1,4 +1,5 @@
 import { horses, cameras } from "./data.js";
+import { version } from "../package.json";
 import { bendEntry, bendExit } from "./course.js";
 import { cameraShot, liveCameras, readView, saveView } from "./broadcast.js";
 import { createRadar } from "./radar.js";
@@ -406,8 +407,17 @@ function display() {
   $("meet-number").textContent = "R" + pad(r.number);
   $("bet-form").hidden = !opened;
   $("closed").hidden = opened;
+  $("open-slip").hidden = !opened;
   $("start").hidden = !opened;
   $("start").disabled = !ready || busy;
+  const lastTicket = r.tickets.at(-1);
+  $("start").textContent = lastTicket ? "封盤開跑　▶" : "不投注開跑　▶";
+  $("ticket-start").hidden = !opened || !lastTicket;
+  $("ticket-start").disabled = !ready || busy;
+  if (opened && lastTicket) {
+    const horse = horses[lastTicket.picks[0]];
+    $("ticket-start").textContent = "跟拍 " + horse.number + " 號" + horse.name + "並開跑　▶";
+  }
   $("speed").hidden = r.phase !== "running";
   $("speed").textContent = "轉播 " + r.speed + "×";
   $("phase").textContent = replay
@@ -480,19 +490,22 @@ async function readLatest() {
   display();
 }
 async function act(change, message = "", guard = game.race.number) {
-  if (!ready || busy) return;
+  if (!ready || busy) return false;
   busy = true;
   quote();
   $("start").disabled = true;
+  $("ticket-start").disabled = true;
   try {
     game = await save.update((g) => {
       if (g.race.number !== guard) throw Error("場次已更新，請重新選擇。");
       change(g);
     });
     status(message);
+    return true;
   } catch (e) {
     status(e.message);
     game = await save.read();
+    return false;
   } finally {
     busy = false;
     display();
@@ -645,7 +658,23 @@ $("ticket-list").onclick = (e) => {
   }
 };
 $("refill").onclick = () => act((g) => refill(g), "已領取 1,000 枚遊戲代幣。");
-$("start").onclick = () => act((g) => start(g), "本場已封盤。");
+async function startWatching(ticket) {
+  const started = await act(g => {
+    if (ticket && !g.race.tickets.some(t => t.id === ticket.id))
+      throw Error("呢張注單已取消，請重新揀馬。");
+    start(g);
+  }, "本場已封盤。");
+  if (!started) return;
+  if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
+  $("stage").focus({ preventScroll: true });
+  if (!$("stage").contains($("speed"))) $("stage").scrollIntoView({ block: "nearest" });
+}
+$("start").onclick = () => startWatching();
+$("ticket-start").onclick = () => startWatching(game.race.tickets.at(-1));
+$("open-slip").onclick = () => {
+  $("pick").focus({ preventScroll: true });
+  document.querySelector(".slip").scrollIntoView({ block: "start" });
+};
 $("speed").onclick = () => {
   const speed = game.race.speed === 1 ? 2 : 1;
   act((g) => changeSpeed(g, speed));
@@ -870,6 +899,8 @@ function fullInfo() {
   else $("stage").after($("order-strip"));
   if (full) $("stage").append($("sound"));
   else quickFocus.after($("sound"));
+  const actionAnchor = full ? $("fs-replay") : $("watch-replay");
+  actionAnchor.before($("start"), $("speed"));
 }
 document.addEventListener("fullscreenchange", fullInfo);
 document.addEventListener("keydown", (e) => {
@@ -899,8 +930,8 @@ $("dialog").onclick = (e) => {
 };
 $("rules-button").onclick = () =>
   dialog(
-    "遊戲玩法",
-    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>按封盤開跑開始賽事。即使冇落注亦可以睇。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
+    "遊戲玩法 · v" + version,
+    "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。選馬、輸入 10 的倍數注碼，按確認投注。同場可落多張注單，開跑前可取消。</span></li><li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li><li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播。可選 2× 轉播。</span></li><li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
   );
 $("history-button").onclick = () =>
   dialog(

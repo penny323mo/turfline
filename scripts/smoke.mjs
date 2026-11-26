@@ -78,6 +78,8 @@ try {
     return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
   }));
   await waitText(page, "#subject-label", "亮相圈");
+  await waitText(page, "#start", "不投注開跑　▶");
+  assert(await page.locator("#ticket-start").isHidden());
   assert(await page.locator("#race-report").isHidden());
   await page.locator('[data-cam="radar"]').click();
   assert(await page.locator("#race-map").isVisible());
@@ -91,8 +93,10 @@ try {
   await page.locator('[data-stake="50"]').click();
   await page.locator("#confirm").click();
   await waitText(page, "#balance", "950");
+  await waitText(page, "#ticket-start", "跟拍 1 號赤焰流星並開跑　▶");
   await page.locator("[data-cancel]").click();
   await waitText(page, "#balance", "1,000");
+  assert(await page.locator("#ticket-start").isHidden());
   const peer = await context.newPage();
   observe(peer);
   // Exercise the same wallet across WebGL and the supported live-radar fallback.
@@ -118,10 +122,13 @@ try {
   }
   await ticket(page, "place", 1);
   await waitText(page, "#ticket-count", "7 張");
-  await ticket(page, "pair", 0, 1);
+  await ticket(page, "pair", 3, 1);
   await waitText(page, "#balance", "920");
   console.log("Eight tickets posted across both tabs.");
-  await page.locator("#start").click();
+  await waitText(page, "#ticket-start", "跟拍 4 號翡翠之星並開跑　▶");
+  await page.locator("#ticket-start").click();
+  await waitText(page, "#hero-bib", "04");
+  assert(await page.locator("#ticket-start").isHidden());
   await waitText(peer, "#phase", "賽事進行中");
   await waitText(page, "#subject-label", "TRACKING");
   assert(await peer.locator("#bet-form").isHidden());
@@ -305,6 +312,8 @@ try {
   assert.equal(await page.locator("#form-guide .form-rank").innerText(), String(order.indexOf(4) + 1));
   await waitText(page, "#ticket-count", "0 張");
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#open-slip").click();
+  assert(await page.locator("#pick").evaluate(el => el === document.activeElement));
   assert(
     await page.evaluate(
       () => document.documentElement.scrollWidth === innerWidth,
@@ -317,6 +326,15 @@ try {
   await page.locator("#rules-button").click();
   assert(await page.locator("#dialog").isVisible());
   await page.locator("#close").click();
+  await page.locator("#full").click();
+  await page.locator("#stage #start").click();
+  await waitText(page, "#phase", "賽事進行中");
+  await page.locator("#stage #speed").click();
+  await waitText(page, "#speed", "轉播 2×");
+  await waitText(peer, "#balance", expected);
+  await waitText(peer, "#ticket-count", "0 張");
+  await page.locator("#full").click();
+  assert(await page.locator(".broadcast-strip #speed").isVisible());
   await peer.close();
   await page.locator('nav a[href*="studio.html"]').click();
   await page.waitForSelector("#stage[data-ready=true]", {

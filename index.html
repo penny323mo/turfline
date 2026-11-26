@@ -60,7 +60,7 @@
       </div>
       <div class="game-grid">
         <section class="viewer-box" aria-label="3D 賽事轉播">
-          <div class="stage" id="stage">
+          <div class="stage" id="stage" tabindex="-1" aria-label="賽事畫面" role="group">
             <canvas
               id="race-canvas"
               aria-label="六匹賽駒與騎師的 3D 賽事轉播"
@@ -142,9 +142,12 @@
               <small id="distance-label">起步至終點　1,200 米</small>
             </div>
             <div class="race-progress"><span id="progress"></span></div>
-            <button class="start-btn" id="start" disabled>封盤開跑　▶</button
-            ><button class="start-btn" id="speed" hidden>轉播 1×</button>
-            <button class="start-btn" id="watch-replay" hidden>賽事重播　↺</button>
+            <div class="race-actions">
+              <button type="button" class="start-btn" id="open-slip" aria-controls="bet-form">揀馬投注</button>
+              <button type="button" class="start-btn" id="start" disabled>不投注開跑　▶</button>
+              <button type="button" class="start-btn" id="speed" hidden>轉播 1×</button>
+              <button type="button" class="start-btn" id="watch-replay" hidden>賽事重播　↺</button>
+            </div>
           </div>
           <div class="replay-deck" id="replay-deck" aria-label="賽事重播控制" hidden>
             <div class="replay-clock"><select id="replay-scope" aria-label="重播片段"><option value="finish">終點慢鏡</option><option value="moment">分段精華</option><option value="full">全場重播</option><option value="stride">步姿慢鏡</option><option value="pullup">過線收步</option></select><output id="replay-time"></output></div>
@@ -227,6 +230,7 @@
           </form>
           <div id="closed" class="closed" hidden></div>
           <div id="message" role="status" aria-live="polite"></div>
+          <button type="button" class="start-btn" id="ticket-start" hidden></button>
         </aside>
       </div>
       <section
