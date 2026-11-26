@@ -43,7 +43,7 @@
       <div class="intro">
         <div>
           <div class="eyebrow">
-            <span class="dash"></span>RACE DAY
+            <span class="dash"></span><span id="meet-day-label">翠谷馬場 · 第 1 個賽日</span>
             <span class="race-index" id="meet-number">R01</span>
           </div>
           <h1>
@@ -51,12 +51,10 @@
             ><span class="title-dot">.</span>
           </h1>
         </div>
-        <div class="meet">
+        <button type="button" class="meet meet-entry" id="meet-button" aria-haspopup="dialog">
           <i data-icon="flag"></i>
-          <div>
-            <strong>翠谷馬場</strong><small>草地　/　1,200 M　/　6 匹</small>
-          </div>
-        </div>
+          <span><strong>賽日積分</strong><small id="meet-round-label">第 1／6 場</small></span>
+        </button>
       </div>
       <div class="game-grid">
         <section class="viewer-box" aria-label="3D 賽事轉播">
@@ -281,7 +279,7 @@
         ><a class="foot-version" href="./studio.html#library">模型與授權 ↗</a>
       </footer>
     </main>
-    <dialog id="dialog">
+    <dialog id="dialog" aria-labelledby="dialog-title">
       <div class="dialog-head">
         <div>
           <div class="eyebrow small">TURFLINE ARCADE</div>

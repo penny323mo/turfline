@@ -195,6 +195,8 @@ try {
   await page.locator(".live-controls #sound").click();
   await waitText(page, "#sound", "音效 關");
   assert.equal(await page.locator("#field-body tr").count(), 6);
+  await peer.locator("#meet-button").click();
+  await waitText(peer, "#meet-summary", "已跑 0／6 場");
   if (!realtime) await context.clock.setFixedTime(now + 100000);
   await waitText(page, "#phase", "賽事完成", 80000);
   await waitText(peer, "#phase", "賽事完成", 80000);
@@ -204,6 +206,12 @@ try {
     .evaluateAll((rows) => rows.map((tr) => Number(tr.dataset.i)));
   assert.deepEqual(await page.locator("#order-runners button").evaluateAll(
     (buttons) => buttons.map((b) => Number(b.dataset.runner))), order);
+  await waitText(peer, "#meet-summary", "已跑 1／6 場");
+  const meetPoints = await peer.locator("#meet-rows td strong").allTextContents();
+  assert.deepEqual(meetPoints, ["10", "6", "4", "3", "2", "1"]);
+  assert.equal(await peer.locator("#meet-rows .number-tile").first().innerText(),
+    String(order[0] + 1).padStart(2, "0"));
+  await peer.locator("#close").click();
   const total = tickets.reduce((sum, t) => {
     const won =
       t.market === "win"
@@ -303,6 +311,7 @@ try {
   await waitText(page, "#meet-number", "R02");
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
+  await waitText(peer, "#meet-round-label", "第 2／6 場");
   assert(await page.locator("#order-strip").isHidden());
   assert(await page.locator("#race-report").isHidden());
   assert(await peer.locator("#replay-deck").isHidden());

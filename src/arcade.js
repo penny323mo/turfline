@@ -31,6 +31,7 @@ import { rightLead } from "./gallop-lead.js";
 import { finishReplay } from "./replay.js";
 import { checkpoints, raceMoments } from "./race-moments.js";
 import { createRaceReport } from "./race-report.js";
+import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, racesPerMeet } from "./meet.js";
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, "0");
@@ -400,11 +401,15 @@ function display() {
   const r = game.race,
     opened = r.phase === "open",
     done = r.phase === "settled";
+  const day = meetNumber(r.number);
+  const round = meetRound(r.number);
   if (replay && (replay.raceNumber !== r.number || !done)) leaveReplay();
   showReplayControls();
   $("balance").textContent = format(game.balance);
   $("meet-name").textContent = r.name;
   $("meet-number").textContent = "R" + pad(r.number);
+  $("meet-day-label").textContent = "翠谷馬場 · 第 " + format(day) + " 個賽日";
+  $("meet-round-label").textContent = "第 " + round + "／" + racesPerMeet + " 場";
   $("bet-form").hidden = !opened;
   $("closed").hidden = opened;
   $("open-slip").hidden = !opened;
@@ -444,7 +449,8 @@ function display() {
       format(r.settlement.stake) +
       " 枚</p>" +
       ladder(r.settlement.order) +
-      '<button class="next-race" id="next">下一場賽事　→</button>'
+      '<button class="next-race" id="next">' +
+      (round === racesPerMeet ? "下一個賽日" : "下一場賽事") + '　→</button>'
     : '<div class="eyebrow small">BETTING CLOSED</div><h3>投注已封盤</h3><p>本場已確認 ' +
       r.tickets.length +
       ' 張注單。點選下列馬匹可即時跟拍。</p><div id="running-ladder"></div>';
@@ -455,6 +461,8 @@ function display() {
   $("result").hidden = !done;
   if (done) {
     const s = r.settlement;
+    const standing = meetStandings(game.history, day);
+    const leader = standing.rows[0];
     $("result").innerHTML =
       '<div class="eyebrow small">OFFICIAL RESULT　/　R' +
       pad(r.number) +
@@ -475,13 +483,19 @@ function display() {
       "　·　本場淨額 " +
       (s.paid - s.stake >= 0 ? "+" : "") +
       format(s.paid - s.stake) +
-      " 枚</p>";
+      " 枚</p>" +
+      '<button type="button" id="result-meet" class="meet-result" aria-haspopup="dialog">' +
+      '<span>' + (standing.champion ? "賽日總冠軍" : "賽日積分領先") + '</span>' +
+      '<strong>' + horses[leader.runner].name + ' · ' + leader.points + ' 分</strong>' +
+      icon("arrow") + '</button>';
+    $("result-meet").onclick = showMeet;
   }
   cameraState.speed = r.phase === "running" ? r.speed : 1;
   field();
   ticketPanel();
   showForm();
   quote();
+  if ($("dialog").open && $("meet-select")) renderMeet();
   tick();
 }
 async function readLatest() {
@@ -924,6 +938,42 @@ function dialog(title, html) {
   $("dialog-body").innerHTML = html;
   $("dialog").showModal();
 }
+function showMeet() {
+  dialog("賽日積分",
+    '<div class="meet-board"><div class="meet-board-header">' +
+    '<label for="meet-select" class="sr-only">選擇賽日</label><select id="meet-select"></select>' +
+    '<p id="meet-summary" role="status"></p></div>' +
+    '<table aria-label="馬匹賽日積分"><thead><tr>' +
+    '<th scope="col">名次</th><th scope="col">馬匹</th><th scope="col">頭馬</th><th scope="col">積分</th>' +
+    '</tr></thead><tbody id="meet-rows"></tbody></table>' +
+    '<p class="meet-rules">每場第 1 至 6 名得 ' + pointsByRank.join("、") +
+    ' 分。同分先比頭馬次數，再比最近一場名次。</p></div>');
+  $("meet-select").onchange = renderMeet;
+  renderMeet();
+}
+function renderMeet() {
+  const current = meetNumber(game.race.number);
+  const picker = $("meet-select");
+  const meets = availableMeets(game.history, current);
+  const selection = meets.includes(Number(picker.value)) ? Number(picker.value) : current;
+  const options = meets.map(day => new Option("賽日 " + format(day) + (day === current ? "（本日）" : ""), day));
+  if (picker.textContent !== options.map(option => option.textContent).join("")) {
+    picker.replaceChildren(...options);
+  }
+  picker.value = String(selection);
+  const { rows, completed, champion } = meetStandings(game.history, selection);
+  const summary = champion
+    ? "總冠軍 " + horses[champion.runner].name
+    : "已跑 " + completed + "／" + racesPerMeet + " 場";
+  if ($("meet-summary").textContent !== summary) $("meet-summary").textContent = summary;
+  $("meet-rows").innerHTML = rows.map(({ runner, wins, points }, rank) => {
+    const horse = horses[runner];
+    return '<tr><td>' + (completed ? rank + 1 : "—") + '</td><th scope="row">' +
+      '<span class="number-tile" style="--silk:' + horse.color + '">' + pad(horse.number) + '</span>' +
+      horse.name + '</th><td>' + wins + '</td><td><strong>' + points + '</strong></td></tr>';
+  }).join("");
+}
+$("meet-button").onclick = showMeet;
 $("close").onclick = () => $("dialog").close();
 $("dialog").onclick = (e) => {
   if (e.target === $("dialog")) $("dialog").close();

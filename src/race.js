@@ -1,6 +1,7 @@
 import { LENGTH } from "./course.js";
 import { planLeadChanges } from "./gallop-lead.js";
 import { planRacingLines } from "./traffic.js";
+import { meetRound } from "./meet.js";
 export { LENGTH } from "./course.js";
 export const RUN_OUT_SECONDS = 8;
 export const GATES = 3;
@@ -25,7 +26,7 @@ function raceCard(number, rng) {
   const total = weights.reduce((a, b) => a + b, 0);
   return {
     number,
-    name: names[(number - 1) % names.length],
+    name: names[meetRound(number) - 1],
     probabilities: weights.map((w) => w / total),
     phase: "open",
     tickets: [],
