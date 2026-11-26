@@ -40,8 +40,9 @@ export function createLiveCommentary(onFollow) {
   const follow = document.getElementById("follow-ticket");
   const sound = document.getElementById("commentary");
   const speech = window.speechSynthesis;
+  let watchedPair;
   let voice, raceNumber, section, leader, contender, contenderSince, wasReplay = false, lastSpoken = -Infinity;
-  follow.onclick = () => onFollow(Number(follow.dataset.runner));
+  follow.onclick = () => onFollow(Number(follow.dataset.runner), watchedPair);
   function findVoice() {
     return speech?.getVoices().find(candidate =>
       candidate.localService && /^(yue(?:-|$)|zh[-_]HK(?:-|$))/i.test(candidate.lang));
@@ -82,7 +83,7 @@ export function createLiveCommentary(onFollow) {
     if (important) speech.cancel();
     speak(message);
   }
-  return (race, frame, runner, replay) => {
+  return (race, frame, runner, replay, partner) => {
     panel.hidden = replay || !frame || frame.t < 0;
     if (replay && !wasReplay) cancelSpeech();
     wasReplay = replay;
@@ -112,13 +113,20 @@ export function createLiveCommentary(onFollow) {
         leader = first;
       }
     }
-    const update = chaseStatus(race, frame, runner);
+    let update;
+    if (partner !== undefined) {
+      const ranks = [runner, partner].map(i => frame.order.indexOf(i) + 1);
+      const positions = [runner, partner].map((i, k) => horses[i].number + " 號第 " + ranks[k] + " 位");
+      update = "連贏 · " + positions.join(" ／ ") + (ranks.every(rank => rank <= 2) ? " · 兩駒暫入前二" : "");
+    } else update = chaseStatus(race, frame, runner);
     if (chase.textContent !== update) chase.textContent = update;
-    const pick = race.latePick?.runner ?? race.tickets.at(-1)?.picks[0];
-    follow.hidden = pick == null || pick === runner;
+    const latest = race.tickets.at(-1);
+    const pick = race.latePick?.runner ?? latest?.picks[0];
+    watchedPair = !race.latePick && latest?.market === "pair" ? latest : undefined;
+    follow.hidden = pick == null || (pick === runner && partner === watchedPair?.picks[1]);
     if (!follow.hidden) {
       follow.dataset.runner = pick;
-      follow.textContent = "跟拍 " + name(pick);
+      follow.textContent = watchedPair ? "跟拍連贏兩駒" : "跟拍 " + name(pick);
     }
   };
 }

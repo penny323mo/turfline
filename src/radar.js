@@ -70,7 +70,7 @@ export function createRadar(canvas, onPick) {
     const ds = labels.map(p => Math.hypot(e.clientX - rect.left - p.x, e.clientY - rect.top - p.y));
     if (Math.min(...ds) <= Math.max(18, radius + 5)) onPick(ds.indexOf(Math.min(...ds)));
   });
-  return function draw(plan, distances, selected, paradeTime = null) {
+  return function draw(plan, distances, selected, paradeTime = null, partner) {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -146,7 +146,7 @@ export function createRadar(canvas, onPick) {
       const trail = [];
       for (let n = Math.max(0,d-18); n < d; n += 1.5) trail.push(runnerPoint(i,n));
       trail.push(dots[i]);
-      drawPath(trail, horses[i].color, i === selected ? 4 : 2);
+      drawPath(trail, horses[i].color, i === selected || i === partner ? 4 : 2);
       drawPath([dots[i], labels[i]], "#dee8d6", 1);
     }
     ctx.font = 'bold ' + Math.round(radius * 1.1) + 'px system-ui';
@@ -155,8 +155,8 @@ export function createRadar(canvas, onPick) {
     labels.forEach(({x,y}, i) => {
       ctx.beginPath(); ctx.arc(x,y,radius,0,2*Math.PI);
       ctx.fillStyle = horses[i].color; ctx.fill();
-      ctx.strokeStyle = i === selected ? "#f2ff99" : "#17352d";
-      ctx.lineWidth = i === selected ? 3 : 1.5; ctx.stroke();
+      ctx.strokeStyle = i === selected ? "#f2ff99" : i === partner ? "#f3e2ba" : "#17352d";
+      ctx.lineWidth = i === selected || i === partner ? 3 : 1.5; ctx.stroke();
       ctx.fillStyle = "#101e1a"; ctx.fillText(String(i+1),x,y+0.4);
     });
   };

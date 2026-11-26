@@ -81,6 +81,8 @@ const marketHints = {
 };
 const picksText = (picks) =>
   picks.map((i) => horses[i].number + " " + horses[i].name).join(" ＋ ");
+const ticketFinish = (ticket, order) => ticket.picks.map(i =>
+  horses[i].number + " 號第 " + (order.indexOf(i) + 1) + " 名").join(" · ");
 const status = (msg) => {
   $("message").textContent = msg;
 };
@@ -104,6 +106,12 @@ let game = newGame(),
 const cameraState = {
   selected: initialView.horse,
   cam: initialView.cam,
+  ticketId: initialView.ticket,
+  get ticketPartner() {
+    if (this.cam !== "duel" || !this.ticketId) return undefined;
+    const ticket = game.race.tickets.find(t => t.id === this.ticketId);
+    return ticket?.market === "pair" && ticket.picks[0] === this.selected ? ticket.picks[1] : undefined;
+  },
   onShot: showShot,
   onPick: (runner) => updateCamera(runner),
   time: 0.8,
@@ -136,14 +144,15 @@ const cameraState = {
 };
 const mapCanvas = $("race-map");
 const paintMap = createRadar(mapCanvas, runner => updateCamera(runner));
-const showLiveCommentary = createLiveCommentary(runner => {
-  updateCamera(runner, cameraState.cam === "pack" ? "duel" : cameraState.cam);
+const showLiveCommentary = createLiveCommentary((runner, pair) => {
+  if (pair) followPair(pair);
+  else updateCamera(runner, cameraState.cam === "pack" ? "duel" : cameraState.cam, null);
   $("stage").focus({ preventScroll: true });
 });
 const showLatePick = createLatePick(async (runner, reward) => {
   if (!ready || busy) return "";
   if (await act(g => lockLatePick(g, runner, reward))) {
-    updateCamera(runner, challenge && cameraState.cam === "pack" ? "duel" : cameraState.cam);
+    updateCamera(runner, challenge && cameraState.cam === "pack" ? "duel" : cameraState.cam, null);
     return "";
   }
   return $("message").textContent;
@@ -179,6 +188,17 @@ const options = horses
   .join("");
 for (const key of ["pick", "second", "fs-horse"]) $(key).innerHTML = options;
 $("second").value = "1";
+const pairPrices = horses.map(horse => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.innerHTML = '<span>' + pad(horse.number) + ' ' + horse.name + '</span><b></b>';
+  button.onclick = () => {
+    $("second").value = String(horse.number - 1);
+    pickMarket("pair");
+  };
+  $("pair-prices").append(button);
+  return button;
+});
 $("fs-camera").innerHTML = raceCameras
   .map((c) => '<option value="' + c.id + '">' + c.name + "</option>")
   .join("");
@@ -240,12 +260,14 @@ function showShot(shot) {
   $("cam-label").textContent = mapActive ? "2D　/　RACE RADAR"
     : (cameraState.cam === "auto" ? "導播" : "CAM " + pad(i + 1)) + "　/　" + raceCameras[i].en;
 }
-function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
+function updateCamera(horse = cameraState.selected, cam = cameraState.cam,
+  ticketId = horse === cameraState.selected && cam === cameraState.cam ? cameraState.ticketId : null) {
   if (horse !== cameraState.selected && replay?.scope === "stride" && !replay.playing)
     focusFootfall(horse,replay.position());
-  const changed = horse !== cameraState.selected || cam !== cameraState.cam;
+  const changed = horse !== cameraState.selected || cam !== cameraState.cam || ticketId !== cameraState.ticketId;
   cameraState.selected = horse;
   cameraState.cam = cam;
+  cameraState.ticketId = ticketId;
   const h = horses[horse];
   $("hero-bib").textContent = pad(h.number);
   $("hero-name").textContent = h.name;
@@ -257,15 +279,18 @@ function updateCamera(horse = cameraState.selected, cam = cameraState.cam) {
   $("fs-camera").value = forceMap ? "radar" : cam;
   for (const b of $("camera-switch").children)
     b.setAttribute("aria-pressed", String(b.dataset.cam === cam));
-  for (const b of orderButtons)
+  const partner = cameraState.ticketPartner;
+  for (const b of orderButtons) {
     b.setAttribute("aria-pressed", String(Number(b.dataset.runner) === horse));
+    b.classList.toggle("ticket-partner", Number(b.dataset.runner) === partner);
+  }
   for (const row of $("field-body").rows) {
     const active = Number(row.dataset.i) === horse;
     row.classList.toggle("tracked", active);
     row.querySelector(".follow").setAttribute("aria-pressed", String(active));
   }
   if (changed) {
-    if (!replay && !challenge) saveView(horse, cam);
+    if (!replay && !challenge) saveView(horse, cam, ticketId || undefined);
     stage?.cut();
     syncSound();
   }
@@ -357,6 +382,16 @@ function pickMarket(key) {
   quote();
 }
 function showForm() {
+  $("pair-board").hidden = market !== "pair";
+  if (market === "pair") {
+    const [first, second] = selectedPicks();
+    pairPrices.forEach((button, i) => {
+      button.hidden = i === first;
+      if (button.hidden) return;
+      button.lastElementChild.textContent = odds(game.race, "pair", [first, i]).toFixed(1) + "×";
+      button.setAttribute("aria-pressed", String(i === second));
+    });
+  }
   const recent = game.history.filter((race) => race.number < game.race.number).slice(0, 3);
   $("form-guide").hidden = !recent.length;
   if (!recent.length) return;
@@ -417,7 +452,8 @@ function ticketPanel() {
         format(t.stake) +
         " 枚　× " +
         t.price.toFixed(1) +
-        "</small></div>" +
+        "</small>" + (r.settlement ? '<small class="ticket-finish">' + ticketFinish(t, r.settlement.order) + "</small>" : "") +
+        '</div><div class="ticket-actions">' +
         (r.phase === "open"
           ? '<button data-cancel="' +
             i +
@@ -429,7 +465,10 @@ function ticketPanel() {
               (t.paid ? "派彩 " + format(t.paid) : "未中") +
               "</strong>"
             : "<small>已封盤</small>") +
-        "</div>",
+        (r.phase !== "open" && t.market === "pair" ? '<button type="button" data-watch-pair="' + i +
+          '" aria-label="' + (r.settlement ? "回看 " : "跟拍 ") + picksText(t.picks) + '">' +
+          (r.settlement ? "雙駒回看" : "跟拍兩駒") + "</button>" : "") +
+        "</div></div>",
     )
     .join("");
 }
@@ -459,7 +498,9 @@ function display() {
   $("start").textContent = challenge ? "開始挑戰　▶" : lastTicket ? "封盤開跑　▶" : "不投注開跑　▶";
   $("ticket-start").hidden = !opened || !lastTicket;
   $("ticket-start").disabled = !ready || busy;
-  if (opened && lastTicket) {
+  if (opened && lastTicket?.market === "pair") {
+    $("ticket-start").textContent = "跟拍連贏兩駒並開跑　▶";
+  } else if (opened && lastTicket) {
     const horse = horses[lastTicket.picks[0]];
     $("ticket-start").textContent = "跟拍 " + horse.number + " 號" + horse.name + "並開跑　▶";
   }
@@ -685,7 +726,7 @@ function tick() {
     }
   }
   showRaceReport(r, snap?.t, replay);
-  showLiveCommentary(r, snap, cameraState.selected, !!replay);
+  showLiveCommentary(r, snap, cameraState.selected, !!replay, cameraState.ticketPartner);
   showLatePick(r, snap, !!replay, ready);
   syncSound(snap?.t);
   drawRadar(snap);
@@ -715,12 +756,25 @@ $("bet-form").onsubmit = (e) => {
   );
 };
 $("ticket-list").onclick = (e) => {
+  const watch = e.target.closest("[data-watch-pair]");
+  if (watch) {
+    const ticket = game.race.tickets[Number(watch.dataset.watchPair)];
+    if (game.race.settlement && !replay) beginReplay();
+    followPair(ticket);
+    $("stage").focus({ preventScroll: true });
+    $("stage").scrollIntoView({ block: "nearest" });
+    return;
+  }
   const b = e.target.closest("[data-cancel]");
   if (b) {
     const id = game.race.tickets[Number(b.dataset.cancel)]?.id;
     act((g) => cancel(g, id), "注單已取消，代幣已退回。");
   }
 };
+function followPair(ticket) {
+  updateCamera(ticket.picks[0], "duel", ticket.id);
+  tick();
+}
 $("refill").onclick = () => { if (!challenge) act((g) => refill(g), "已領取 1,000 枚遊戲代幣。"); };
 async function startWatching(ticket) {
   const started = await act(g => {
@@ -730,7 +784,8 @@ async function startWatching(ticket) {
     else start(g);
   }, challenge ? "" : "本場已封盤。");
   if (!started) return;
-  if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
+  if (ticket?.market === "pair") followPair(ticket);
+  else if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
   $("stage").focus({ preventScroll: true });
   if (!$("stage").contains($("speed"))) $("stage").scrollIntoView({ block: "nearest" });
 }
@@ -779,7 +834,7 @@ $("less").onclick = () =>
 $("more").onclick = () => setStake((Number($("stake").value) || 0) + 10);
 $("camera-switch").onclick = (e) => {
   const b = e.target.closest("[data-cam]");
-  if (b) updateCamera(cameraState.selected, b.dataset.cam);
+  if (b) updateCamera(cameraState.selected, b.dataset.cam, null);
 };
 $("field-body").onclick = (e) => {
   const price = e.target.closest("[data-price]");
@@ -796,7 +851,7 @@ $("field-body").onclick = (e) => {
 $("fs-horse").onchange = quickFocus.onchange = (e) =>
   updateCamera(Number(e.target.value));
 $("fs-camera").onchange = (e) =>
-  updateCamera(cameraState.selected, e.target.value);
+  updateCamera(cameraState.selected, e.target.value, null);
 function showReplayControls() {
   const available = ready && game.race.phase === "settled";
   const pickAvailable = available && Number.isFinite(game.race.latePick?.raceTime);
@@ -889,7 +944,7 @@ function beginReplay(scope = "finish", momentIndex = 0) {
   const picker = $("crossing-rank");
   picker.replaceChildren(...game.race.settlement.order.map((i,rank) =>
     new Option("第 " + (rank+1) + " 名壓線 · " + pad(horses[i].number) + " " + horses[i].name,String(i))));
-  previousView = { horse: cameraState.selected, cam: cameraState.cam };
+  previousView = { horse: cameraState.selected, cam: cameraState.cam, ticket: cameraState.ticketId };
   playScope(scope, true, momentIndex);
   $("replay-play").focus({ preventScroll: true });
 }
@@ -897,7 +952,7 @@ $("replay-scope").onchange = e => playScope(e.target.value);
 function leaveReplay() {
   replay = null;
   $("subject-label").removeAttribute("aria-live");
-  updateCamera(previousView.horse, previousView.cam);
+  updateCamera(previousView.horse, previousView.cam, previousView.ticket ?? null);
   previousView = null;
   stage?.cut();
 }
@@ -1021,7 +1076,7 @@ document.addEventListener("keydown", (e) => {
   )
     return;
   const shortcut = /^[1-9]$/.test(e.key) && liveCameras[Number(e.key) - 1];
-  if (!forceMap && shortcut) updateCamera(cameraState.selected, shortcut.id);
+  if (!forceMap && shortcut) updateCamera(cameraState.selected, shortcut.id, null);
 });
 function dialog(title, html) {
   $("dialog-title").textContent = title;
@@ -1111,7 +1166,7 @@ $("history-button").onclick = () =>
                     t.price.toFixed(1) +
                     "　→　" +
                     t.paid +
-                    " 枚</p>",
+                    " 枚 · " + ticketFinish(t, r.order) + "</p>",
                 )
                 .join("") +
               "</details>",
@@ -1120,7 +1175,8 @@ $("history-button").onclick = () =>
       : '<p class="empty-ticket">第一場完賽後，呢度會記錄名次、注項同派彩。</p>',
   );
 function drawRadar(s = snapshotIfRunning()) {
-  if (!mapCanvas.hidden) paintMap(game.race.plan, s?.ds, cameraState.selected, cameraState.parade ? cameraState.paradeTime : null);
+  if (!mapCanvas.hidden) paintMap(game.race.plan, s?.ds, cameraState.selected,
+    cameraState.parade ? cameraState.paradeTime : null, cameraState.ticketPartner);
 }
 function snapshotIfRunning() {
   return replay ? snapshotAt(game.race, replay.position()) : game.race.plan ? snapshot(game.race) : null;

@@ -228,7 +228,8 @@ export async function startStage(canvas, state, refresh) {
     lastParade = parade;
     const z = race ? race.ds[state.selected] : 10 + t * (1190 / duration);
     const shot = cameraShot(state.cam, race ? z : 0, !!race);
-    const rival = shot === "duel" ? chaseRival(race.order, race.order.indexOf(state.selected)) : undefined;
+    const rival = shot === "duel"
+      ? state.ticketPartner ?? chaseRival(race.order, race.order.indexOf(state.selected)) : undefined;
     const groupShot = shot === "pack" || shot === "duel";
     if (shot !== lastShot) {
       cut = true;

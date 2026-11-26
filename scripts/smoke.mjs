@@ -122,12 +122,23 @@ try {
   }
   await ticket(page, "place", 1);
   await waitText(page, "#ticket-count", "7 張");
-  await ticket(page, "pair", 3, 1);
+  await prepare(page, "pair", 3, 1);
+  const partners = page.locator("#pair-prices button:visible");
+  assert.equal(await partners.count(), 5);
+  const blue = partners.filter({ hasText: "02 藍岸疾風" });
+  const pairPrice = await blue.locator("b").textContent();
+  await partners.filter({ hasText: "01 赤焰流星" }).click();
+  assert.equal(await page.locator("#second").inputValue(), "0");
+  await blue.click();
+  assert.equal(await page.locator("#second").inputValue(), "1");
+  await waitText(page, "#price", pairPrice);
+  await page.locator("#confirm").click();
   await waitText(page, "#balance", "920");
   console.log("Eight tickets posted across both tabs.");
-  await waitText(page, "#ticket-start", "跟拍 4 號翡翠之星並開跑　▶");
+  await waitText(page, "#ticket-start", "跟拍連贏兩駒並開跑　▶");
   await page.locator("#ticket-start").click();
   await waitText(page, "#hero-bib", "04");
+  await page.locator('#stage[data-shot="duel"] #rival-mark:not([hidden])').filter({ hasText: "02" }).waitFor();
   assert(await page.locator("#ticket-start").isHidden());
   await waitText(peer, "#phase", "賽事進行中");
   await waitText(page, "#subject-label", "TRACKING");
@@ -191,10 +202,13 @@ try {
   await waitText(page, "#hero-bib", "04");
   if (!realtime) {
     const follow = page.locator("#stage #follow-ticket");
-    await follow.waitFor({ state: "hidden" });
+    await waitText(page, "#follow-ticket", "跟拍連贏兩駒");
     await page.selectOption("#fs-horse", "2");
     await follow.click();
     await waitText(page, "#hero-bib", "04");
+    await page.locator('#stage[data-shot="duel"] #rival-mark:not([hidden])').filter({ hasText: "02" }).waitFor();
+    await page.locator("#live-chase").filter({ hasText: /4 號第 [1-6] 位 ／ 2 號第 [1-6] 位/ }).waitFor();
+    await follow.waitFor({ state: "hidden" });
   }
   await page.locator("#stage #sound").click();
   await waitText(page, "#sound", "音效 開");
@@ -263,6 +277,13 @@ try {
   await ready(page);
   await waitText(page, "#balance", expected);
   await waitText(page, "#hero-bib", "04");
+  const pairReceipt = page.locator("#ticket-list .ticket").filter({ hasText: "連贏" });
+  await pairReceipt.locator(".ticket-finish").filter({ hasText: "4 號第 " + (order.indexOf(3) + 1) +
+    " 名 · 2 號第 " + (order.indexOf(1) + 1) + " 名" }).waitFor();
+  await pairReceipt.getByRole("button").click();
+  await waitText(page, "#phase", "終點重播");
+  await page.locator('#stage[data-shot="duel"] #rival-mark:not([hidden])').filter({ hasText: "02" }).waitFor();
+  await page.locator("#replay-exit").click();
   const moments = page.locator("#report-moments button");
   assert.equal(await page.locator("#report-moments button:enabled").count(), 4);
   const stretchLeader = await moments.nth(1).locator(".moment-leader").innerText();

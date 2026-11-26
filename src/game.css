@@ -225,6 +225,24 @@
   background: #36422a;
   color: var(--green);
 }
+.pair-board { margin: 0 0 12px; }
+.pair-board p { margin: 0 0 4px; color: var(--dim); font-size: 11px; }
+#pair-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 4px; }
+#pair-prices button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: #cad3c3;
+  font-size: 11px;
+}
+#pair-prices button[aria-pressed="true"] { background: #36422a; border-color: #738449; }
+#pair-prices b { color: var(--green); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { #pair-prices button { min-height: 44px; } }
 .hint {
   font-size: 11px;
   color: var(--dim);
@@ -572,6 +590,10 @@
   font: 600 16px var(--display);
   color: var(--green);
 }
+.ticket-actions { display: grid; justify-items: end; flex: none; }
+.ticket-actions [data-watch-pair] { min-height: 36px; }
+.ticket .ticket-finish { margin-top: 3px; color: #d4ddce; }
+@media (pointer: coarse) { .ticket-actions [data-watch-pair] { min-height: 44px; } }
 #message:not(:empty) {
   padding: 8px 14px;
   background: #263322;
@@ -1063,6 +1085,19 @@
   .replay-keys button, .replay-keys select { min-height: 40px; }
   .stage.replaying:fullscreen .lower-third, .stage.replaying.expanded .lower-third { bottom: calc(var(--replay-height, 105px) + 50px); }
 }
+@media (max-width: 360px) {
+  .arcade .feed-id {
+    display: block;
+    max-inline-size: 106px;
+    padding-inline: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    line-height: 23px;
+    letter-spacing: 0.04em;
+  }
+}
 
 .order-strip {
   display: flex;
@@ -1082,6 +1117,7 @@
   font: 650 14px/1 var(--display); font-variant-numeric: tabular-nums;
 }
 #order-runners button[aria-pressed="true"] { border-color: var(--green); background: #303b27; }
+#order-runners button.ticket-partner { border-color: #f3e2ba; }
 #order-runners button:hover { background: #313a2d; }
 #order-runners .order-place { color: #b6c3ae; font-size: 11px; }
 #order-runners b { color: #101610; background: var(--silk); border-radius: 2px; padding: 3px 4px; }

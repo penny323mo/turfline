@@ -21,8 +21,8 @@ export function readView() {
   return { horse: 0, cam: "track" };
 }
 
-export function saveView(horse, cam) {
-  try { sessionStorage.setItem(viewKey, JSON.stringify({ horse, cam })); }
+export function saveView(horse, cam, ticket) {
+  try { sessionStorage.setItem(viewKey, JSON.stringify({ horse, cam, ticket })); }
   catch { /* Camera controls still work in memory. */ }
 }
 
