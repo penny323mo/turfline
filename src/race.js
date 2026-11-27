@@ -8,7 +8,8 @@ export { LENGTH } from "./course.js";
 export const RUN_OUT_SECONDS = 8;
 export const GATES = 3;
 export const STARTING_FUNDS = 1000;
-export const markets = { win: "獨贏", place: "位置", pair: "連贏" };
+export const markets = { win: "獨贏", place: "位置", pair: "連贏", exacta: "二重彩" };
+export const twoRunnerMarket = market => market === "pair" || market === "exacta";
 export const styles = ["領放", "跟前", "後上", "前置", "留後", "跟前"];
 const names = [
   "翠谷短途盃",
@@ -53,7 +54,7 @@ export function newGame(rng = uniform, raceNumber = 1) {
 export function odds(race, market, picks) {
   if (
     !Object.hasOwn(markets, market) ||
-    picks.length !== (market === "pair" ? 2 : 1) ||
+    picks.length !== (twoRunnerMarket(market) ? 2 : 1) ||
     new Set(picks).size !== picks.length ||
     picks.some((n) => !Number.isInteger(n) || n < 0 || n >= 6)
   )
@@ -69,6 +70,8 @@ export function odds(race, market, picks) {
     );
   if (market === "pair")
     probability = p[a] * p[b] * (1 / (1 - p[a]) + 1 / (1 - p[b]));
+  if (market === "exacta")
+    probability = p[a] * p[b] / (1 - p[a]);
   return Math.max(1.1, Math.floor(9.2 / probability) / 10);
 }
 export const returns = (stake, price) =>
@@ -230,7 +233,9 @@ export function settle(game, now = Date.now()) {
     const won =
       ticket.market === "win"
         ? ticket.picks[0] === order[0]
-        : ticket.picks.every((i) => firstTwo.includes(i));
+        : ticket.market === "exacta"
+          ? ticket.picks[0] === order[0] && ticket.picks[1] === order[1]
+          : ticket.picks.every((i) => firstTwo.includes(i));
     ticket.paid = won ? returns(ticket.stake, ticket.price) : 0;
     totals.stake += ticket.stake;
     totals.paid += ticket.paid;

@@ -5,8 +5,12 @@ export async function openGameSave(key = "player", initial = newGame) {
   let db;
   try {
     db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("turfline-arcade", 1);
-      request.onupgradeneeded = () => request.result.createObjectStore("save");
+      // Older tabs settle every two-runner ticket as an unordered pair.
+      // Close their v1 connections before either tab can write an exacta.
+      const request = indexedDB.open("turfline-arcade", 2);
+      request.onupgradeneeded = event => {
+        if (event.oldVersion === 0) request.result.createObjectStore("save");
+      };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

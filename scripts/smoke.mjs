@@ -127,6 +127,17 @@ try {
   }
   await ticket(page, "place", 1);
   await waitText(page, "#ticket-count", "7 張");
+  await prepare(page, "exacta", 0, 2);
+  const originalQuote = await page.locator("#price").textContent();
+  const reverseQuote = (await page.locator("#swap-order").innerText()).match(/[\d.]+×$/)[0];
+  await page.locator("#swap-order").click();
+  assert.equal(await page.getByLabel("第一名", {exact: true}).inputValue(), "2");
+  assert.equal(await page.getByLabel("第二名", {exact: true}).inputValue(), "0");
+  await waitText(page, "#price", reverseQuote);
+  await page.locator("#swap-order").click();
+  await waitText(page, "#price", originalQuote);
+  await page.locator("#confirm").click();
+  await waitText(page, "#ticket-start", "跟拍二重彩兩駒並開跑　▶");
   await prepare(page, "pair", 3, 1);
   const partners = page.locator("#pair-prices button:visible");
   assert.equal(await partners.count(), 5);
@@ -138,8 +149,8 @@ try {
   assert.equal(await page.locator("#second").inputValue(), "1");
   await waitText(page, "#price", pairPrice);
   await page.locator("#confirm").click();
-  await waitText(page, "#balance", "920");
-  console.log("Eight tickets posted across both tabs.");
+  await waitText(page, "#balance", "910");
+  console.log("Nine tickets posted across both tabs.");
   await waitText(page, "#ticket-start", "跟拍連贏兩駒並開跑　▶");
   await page.locator("#ticket-start").click();
   await waitText(page, "#hero-bib", "04");
@@ -158,8 +169,8 @@ try {
   await waitText(page, "#hero-bib", "05");
   assert.equal(await page.locator('[data-cam="auto"]').getAttribute("aria-pressed"), "true");
   await waitText(peer, "#hero-bib", "01");
-  await waitText(page, "#balance", "920");
-  await waitText(page, "#ticket-count", "8 張");
+  await waitText(page, "#balance", "910");
+  await waitText(page, "#ticket-count", "9 張");
   if (!realtime) {
     assert.equal(await page.locator('#report-moments [data-reached="true"]').count(), 0);
     assert.equal(await page.locator('#report-moments button:enabled').count(), 0);
@@ -276,10 +287,11 @@ try {
     const won =
       t.market === "win"
         ? order[0] === t.picks[0]
+        : t.market === "exacta" ? t.picks.every((runner, rank) => order[rank] === runner)
         : t.picks.every((i) => order.slice(0, 2).includes(i));
     return sum + (won ? Math.round(t.price * 10) : 0);
   }, 0);
-  const expected = (920 + total + (order[0] === 3 ? lateReward : 0)).toLocaleString("zh-HK");
+  const expected = (910 + total + (order[0] === 3 ? lateReward : 0)).toLocaleString("zh-HK");
   await waitText(page, "#balance", expected);
   await waitText(peer, "#balance", expected);
   await page.reload();
@@ -365,6 +377,8 @@ try {
   await waitText(page, "#balance", expected);
   await page.locator("#history-button").click();
   assert.equal(await page.locator(".history-row").count(), 1);
+  await page.locator(".history-row summary").click();
+  await page.locator(".history-row p").filter({ hasText: "二重彩" }).filter({ hasText: "1 赤焰流星 → 3 黃金時刻" }).waitFor();
   await page.locator("#close").click();
   await peer.locator("#report-moments button").nth(2).click();
   await waitText(peer, "#phase", "分段精華");
@@ -480,7 +494,7 @@ try {
     "PASS: 3D, concurrent bets, official settlement, independent finish replay, freeze at winning time, fullscreen playback, race-card odds, form, cross-tab next race, mobile and model studio.",
     JSON.stringify({
       order: order.map((i) => i + 1),
-      stake: 80,
+      stake: 90,
       paid: total,
       balance: expected,
       realtime,

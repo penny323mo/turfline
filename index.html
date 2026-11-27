@@ -214,17 +214,20 @@
               ><button type="button" data-market="place" aria-pressed="false">
                 位置</button
               ><button type="button" data-market="pair" aria-pressed="false">
-                連贏
+                連贏</button
+              ><button type="button" data-market="exacta" aria-pressed="false">
+                二重彩
               </button>
             </div>
             <p id="market-hint" class="hint">選中第一名馬匹</p>
             <label class="bet-field"
-              >投注馬匹<select id="pick" aria-label="投注馬匹"></select
+              ><span id="pick-label">投注馬匹</span><select id="pick" aria-labelledby="pick-label"></select
             ></label>
             <label id="second-field" class="bet-field" hidden
-              >配搭馬匹<select id="second" aria-label="配搭馬匹"></select
+              ><span id="second-label">配搭馬匹</span><select id="second" aria-labelledby="second-label"></select
             ></label>
             <div id="pair-board" class="pair-board" hidden>
+              <button id="swap-order" type="button" hidden></button>
               <p id="pair-heading">配搭賠率</p>
               <div id="pair-prices" role="group" aria-labelledby="pair-heading"></div>
             </div>

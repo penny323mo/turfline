@@ -7,6 +7,7 @@ import { icon } from "./icons.js";
 import {
   newGame,
   markets,
+  twoRunnerMarket,
   styles,
   odds,
   returns,
@@ -79,9 +80,10 @@ const marketHints = {
   win: "選中第一名馬匹",
   place: "選中頭兩名其中一匹",
   pair: "選中頭兩名馬匹，次序不限",
+  exacta: "揀中頭馬同第二名，兩匹次序都要啱",
 };
-const picksText = (picks) =>
-  picks.map((i) => horses[i].number + " " + horses[i].name).join(" ＋ ");
+const picksText = ({ picks, market }) =>
+  picks.map((i) => horses[i].number + " " + horses[i].name).join(market === "exacta" ? " → " : " ＋ ");
 const ticketFinish = (ticket, order) => ticket.picks.map(i =>
   horses[i].number + " 號第 " + (order.indexOf(i) + 1) + " 名").join(" · ");
 const status = (msg) => {
@@ -108,11 +110,12 @@ const cameraState = {
   selected: initialView.horse,
   cam: initialView.cam,
   ticketId: initialView.ticket,
-  get ticketPartner() {
+  get watchedTicket() {
     if (this.cam !== "duel" || !this.ticketId) return undefined;
     const ticket = game.race.tickets.find(t => t.id === this.ticketId);
-    return ticket?.market === "pair" && ticket.picks[0] === this.selected ? ticket.picks[1] : undefined;
+    return twoRunnerMarket(ticket?.market) && ticket.picks[0] === this.selected ? ticket : undefined;
   },
+  get ticketPartner() { return this.watchedTicket?.picks[1]; },
   onShot: showShot,
   onPick: (runner) => updateCamera(runner),
   time: 0.8,
@@ -195,7 +198,7 @@ const pairPrices = horses.map(horse => {
   button.innerHTML = '<span>' + pad(horse.number) + ' ' + horse.name + '</span><b></b>';
   button.onclick = () => {
     $("second").value = String(horse.number - 1);
-    pickMarket("pair");
+    pickMarket(market);
   };
   $("pair-prices").append(button);
   return button;
@@ -346,7 +349,7 @@ function field() {
 }
 function selectedPicks() {
   const first = Number($("pick").value);
-  return market === "pair" ? [first, Number($("second").value)] : [first];
+  return twoRunnerMarket(market) ? [first, Number($("second").value)] : [first];
 }
 function quote() {
   const picks = selectedPicks(),
@@ -371,7 +374,9 @@ function quote() {
 }
 function pickMarket(key) {
   market = key;
-  $("second-field").hidden = market !== "pair";
+  $("second-field").hidden = !twoRunnerMarket(market);
+  $("pick-label").textContent = market === "exacta" ? "第一名" : "投注馬匹";
+  $("second-label").textContent = market === "exacta" ? "第二名" : "配搭馬匹";
   for (const opt of $("second").options)
     opt.disabled = opt.value === $("pick").value;
   if ($("second").value === $("pick").value)
@@ -383,13 +388,18 @@ function pickMarket(key) {
   quote();
 }
 function showForm() {
-  $("pair-board").hidden = market !== "pair";
-  if (market === "pair") {
+  $("pair-board").hidden = !twoRunnerMarket(market);
+  if (twoRunnerMarket(market)) {
     const [first, second] = selectedPicks();
+    const ordered = market === "exacta";
+    $("pair-heading").textContent = ordered ? "揀第二名 · 二重彩賠率" : "配搭賠率";
+    $("swap-order").hidden = !ordered;
+    if (ordered) $("swap-order").textContent = "對調頭二名 · " + horses[second].number + " → " +
+      horses[first].number + "　" + odds(game.race, market, [second, first]).toFixed(1) + "×";
     pairPrices.forEach((button, i) => {
       button.hidden = i === first;
       if (button.hidden) return;
-      button.lastElementChild.textContent = odds(game.race, "pair", [first, i]).toFixed(1) + "×";
+      button.lastElementChild.textContent = odds(game.race, market, [first, i]).toFixed(1) + "×";
       button.setAttribute("aria-pressed", String(i === second));
     });
   }
@@ -448,7 +458,7 @@ function ticketPanel() {
         '<div class="ticket"><div><b>' +
         markets[t.market] +
         "　" +
-        picksText(t.picks) +
+        picksText(t) +
         "</b><small>" +
         format(t.stake) +
         " 枚　× " +
@@ -466,8 +476,8 @@ function ticketPanel() {
               (t.paid ? "派彩 " + format(t.paid) : "未中") +
               "</strong>"
             : "<small>已封盤</small>") +
-        (r.phase !== "open" && t.market === "pair" ? '<button type="button" data-watch-pair="' + i +
-          '" aria-label="' + (r.settlement ? "回看 " : "跟拍 ") + picksText(t.picks) + '">' +
+        (r.phase !== "open" && twoRunnerMarket(t.market) ? '<button type="button" data-watch-pair="' + i +
+          '" aria-label="' + (r.settlement ? "回看 " : "跟拍 ") + picksText(t) + '">' +
           (r.settlement ? "雙駒回看" : "跟拍兩駒") + "</button>" : "") +
         "</div></div>",
     )
@@ -505,8 +515,8 @@ function display() {
   if (!challenge && !lastTicket && cardPick != null) $("start").textContent = "跟拍心水馬開跑　▶";
   $("ticket-start").hidden = !opened || !lastTicket;
   $("ticket-start").disabled = !ready || busy;
-  if (opened && lastTicket?.market === "pair") {
-    $("ticket-start").textContent = "跟拍連贏兩駒並開跑　▶";
+  if (opened && twoRunnerMarket(lastTicket?.market)) {
+    $("ticket-start").textContent = "跟拍" + markets[lastTicket.market] + "兩駒並開跑　▶";
   } else if (opened && lastTicket) {
     const horse = horses[lastTicket.picks[0]];
     $("ticket-start").textContent = "跟拍 " + horse.number + " 號" + horse.name + "並開跑　▶";
@@ -736,7 +746,7 @@ function tick() {
     }
   }
   showRaceReport(r, snap?.t, replay);
-  showLiveCommentary(r, snap, cameraState.selected, !!replay, cameraState.ticketPartner);
+  showLiveCommentary(r, snap, cameraState.selected, !!replay, cameraState.watchedTicket);
   showLatePick(r, snap, !!replay, ready);
   syncSound(snap);
   drawRadar(snap);
@@ -759,7 +769,7 @@ $("bet-form").onsubmit = (e) => {
     "已落注　" +
       markets[market] +
       " · " +
-      picksText(ticket.picks) +
+      picksText(ticket) +
       " · " +
       ticket.stake +
       " 枚",
@@ -794,7 +804,7 @@ async function startWatching(ticket) {
     else start(g);
   }, challenge ? "" : "本場已封盤。");
   if (!started) return;
-  if (ticket?.market === "pair") followPair(ticket);
+  if (twoRunnerMarket(ticket?.market)) followPair(ticket);
   else if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
   else if (!game.race.tickets.length && game.meetPicks?.[game.race.number] != null)
     updateCamera(game.meetPicks[game.race.number], cameraState.cam, null);
@@ -831,6 +841,12 @@ $("market-tabs").onclick = (e) => {
   if (b) pickMarket(b.dataset.market);
 };
 $("pick").onchange = () => pickMarket(market);
+$("swap-order").onclick = () => {
+  const [first, second] = selectedPicks();
+  $("pick").value = String(second);
+  $("second").value = String(first);
+  pickMarket(market);
+};
 $("second").onchange = () => { showForm(); quote(); };
 $("stake").oninput = quote;
 function setStake(n) {
@@ -1151,7 +1167,7 @@ $("rules-button").onclick = () =>
   dialog(
     "遊戲玩法 · v" + version,
     "<ul><li><b>賽前落注</b><span>起始有 1,000 枚虛擬代幣。可以先睇本場步速，再選馬同注碼。每注由 10 枚起，以 10 枚為單位。同場可落多張注單，開跑前可取消。</span></li>" +
-    "<li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li>" +
+    "<li><b>四種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後，二重彩要順序揀中第一名同第二名。派彩按落注時顯示嘅賠率計算，包含本金。</span></li>" +
     "<li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播，8 用雙駒跟拍睇焦點馬同對手。可選 2× 轉播。</span></li>" +
     "<li><b>尾段預測</b><span>頭馬轉入直路後，可以免費揀一次頭馬，最後 200 米截止。揀馬時排得越後，估中獎勵越多。</span></li>" +
     "<li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>" +
@@ -1184,7 +1200,7 @@ $("history-button").onclick = () =>
                     "<p>" +
                     markets[t.market] +
                     "　" +
-                    picksText(t.picks) +
+                    picksText(t) +
                     "　" +
                     t.stake +
                     " × " +

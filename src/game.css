@@ -235,7 +235,7 @@
   gap: 4px;
 }
 .market-tabs {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: #101510;
   padding: 3px;
   border-radius: 5px;
@@ -254,6 +254,7 @@
   color: var(--green);
 }
 .pair-board { margin: 0 0 12px; }
+#swap-order { min-height: 44px; margin: 0 0 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 3px; color: var(--green); }
 .pair-board p { margin: 0 0 4px; color: var(--dim); font-size: 11px; }
 #pair-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 4px; }
 #pair-prices button {
@@ -270,7 +271,9 @@
 }
 #pair-prices button[aria-pressed="true"] { background: #36422a; border-color: #738449; }
 #pair-prices b { color: var(--green); white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (pointer: coarse) { #pair-prices button { min-height: 44px; } }
+@media (pointer: coarse) {
+  .market-tabs button, .bet-field select, #pair-prices button { min-height: 44px; }
+}
 .hint {
   font-size: 11px;
   color: var(--dim);

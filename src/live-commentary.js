@@ -1,6 +1,6 @@
 import { bendEntry, bendExit, LENGTH } from "./course.js";
 import { horses } from "./data.js";
-import { snapshotAt } from "./race.js";
+import { markets, snapshotAt, twoRunnerMarket } from "./race.js";
 import { chaseRival } from "./broadcast.js";
 
 const name = runner => horses[runner].name;
@@ -85,7 +85,7 @@ export function createLiveCommentary(onFollow) {
     if (important) speech.cancel();
     speak(message);
   }
-  return (race, frame, runner, replay, partner) => {
+  return (race, frame, runner, replay, ticket) => {
     panel.hidden = replay || !frame || frame.t < 0;
     if (replay && !wasReplay) cancelSpeech();
     wasReplay = replay;
@@ -117,19 +117,23 @@ export function createLiveCommentary(onFollow) {
       }
     }
     let update;
-    if (partner !== undefined) {
-      const ranks = [runner, partner].map(i => frame.order.indexOf(i) + 1);
-      const positions = [runner, partner].map((i, k) => horses[i].number + " 號第 " + ranks[k] + " 位");
-      update = "連贏 · " + positions.join(" ／ ") + (ranks.every(rank => rank <= 2) ? " · 兩駒暫入前二" : "");
+    if (ticket) {
+      const ranks = ticket.picks.map(i => frame.order.indexOf(i) + 1);
+      const positions = ticket.picks.map((i, k) => horses[i].number + " 號第 " + ranks[k] + " 位");
+      let state = "";
+      if (ranks.every(rank => rank <= 2)) {
+        state = ticket.market === "exacta" ? (ranks[0] === 1 ? " · 次序吻合" : " · 次序相反") : " · 兩駒暫入前二";
+      }
+      update = markets[ticket.market] + " · " + positions.join(" ／ ") + state;
     } else update = chaseStatus(race, frame, runner);
     if (chase.textContent !== update) chase.textContent = update;
     const latest = race.tickets.at(-1);
     const pick = race.latePick?.runner ?? latest?.picks[0];
-    watchedPair = !race.latePick && latest?.market === "pair" ? latest : undefined;
-    follow.hidden = pick == null || (pick === runner && partner === watchedPair?.picks[1]);
+    watchedPair = !race.latePick && twoRunnerMarket(latest?.market) ? latest : undefined;
+    follow.hidden = pick == null || (pick === runner && ticket?.id === watchedPair?.id);
     if (!follow.hidden) {
       follow.dataset.runner = pick;
-      follow.textContent = watchedPair ? "跟拍連贏兩駒" : "跟拍 " + name(pick);
+      follow.textContent = watchedPair ? "跟拍" + markets[watchedPair.market] + "兩駒" : "跟拍 " + name(pick);
     }
   };
 }

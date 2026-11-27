@@ -34,6 +34,9 @@ test("stake validation, ticket retry, locked odds and cancellation", () => {
     ["win", [6], 50],
     ["pair", [0, 0], 50],
     ["pair", [1], 50],
+    ["exacta", [1], 50],
+    ["exacta", [3, 3], 50],
+    ["exacta", [1, 4, 5], 50],
     ["place", [3], 2000],
     ["bad", [1], 50],
   ]) {
@@ -88,6 +91,28 @@ test("each supported market settles from the finish order exactly once", () => {
   assert.equal(g.race.number, 2);
   assert.deepEqual(g.race.tickets, []);
   assert.equal(g.balance, 730 + paid);
+});
+test("all 30 exactas quote their ordered draw and only the winning sequence pays", () => {
+  const rng = seeded(4), game = newGame(rng), race = game.race;
+  const p = race.probabilities;
+  for (let first = 0; first < 6; first++) {
+    for (let second = 0; second < 6; second++) {
+      if (first === second) continue;
+      const picks = [first, second], chance = p[first] * p[second] / (1 - p[first]);
+      assert.equal(odds(race, "exacta", picks), Math.floor(9.2 / chance) / 10);
+      wager(game, { id: picks.join("-"), market: "exacta", picks, stake: 10 });
+    }
+  }
+  assert.equal(game.balance, 700);
+  start(game, 0, rng);
+  assert.equal(settle(game, 120000), true);
+  const winningOrder = race.settlement.order.slice(0, 2);
+  const winners = game.history[0].tickets.filter(ticket => ticket.paid > 0);
+  assert.equal(winners.length, 1);
+  assert.deepEqual(winners[0].picks, winningOrder);
+  assert.equal(winners[0].paid, returns(10, winners[0].price));
+  assert.equal(game.balance, 700 + winners[0].paid);
+  assert.equal(settle(game, 150000), false);
 });
 test("positions advance, cross 1200 at finish, and use ticket-independent race plans", () => {
   const winners = new Set();
