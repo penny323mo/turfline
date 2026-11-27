@@ -42,6 +42,8 @@ Turfline 係一隻繁體廣東話 3D 觀眾賽馬街機。每場有六匹賽駒�
 
 按「音效」可聽焦點馬嘅四拍草地蹄聲。換馬會切換步幅同節奏，2× 轉播及終點慢鏡會跟畫面調整。暫停或拖動重播時蹄聲會停，全螢幕右上角亦可以開關音效。[實機蹄聲試聽](https://penny323mo.github.io/turfline/views/hoofbeats.mp4)
 
+最後 240 米開始聽到看台聲，頭兩駒越接近，觀眾聲越響。最後一百米嘅廣東話字幕會點名兩匹馬，交代兩駒爭先或者領放距離。看台錄音由 Canukfa 喺 Arapahoe Park 馬場錄製，遊戲取用當中一段，經濾音、壓縮同循環處理。[原錄音](https://freesound.org/people/Canukfa/sounds/143306/) · [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
+
 正式賽事喺對面直路起步，跑過半徑 120 米嘅右彎，再入最後 480 米直路。馬匹入彎會逐步向內傾，外疊馬按自己實際跑過嘅路程踏步。側鏡可以睇到馬腰收放、馬頸前伸，同埋騎師屈膝、手肘順住馬頭活動。[彎位實機片段，附半速側鏡](https://penny323mo.github.io/turfline/views/bend-gallop.mp4)
 
 開新一場後，馬匹會按馬群前後距離選擇貼欄或移出外疊。揀「走位圖」可以睇每匹馬最近 18 米嘅跑線，點馬號可切換焦點。側鏡會按馬群位置揀較少遮擋嘅一側。舊賽事以原有檔位重播。[3 號馬移出外疊超越 5 號實機片段](https://penny323mo.github.io/turfline/views/running-lines.mp4)

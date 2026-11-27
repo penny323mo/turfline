@@ -1,4 +1,5 @@
-import { distance, stopDistance } from "./race.js";
+import { distance, snapshotAt, stopDistance } from "./race.js";
+import { crowdLevel, grandstand } from "./grandstand.js";
 import { racingDistance } from "./racing-line.js";
 import { rightLead } from "./gallop-lead.js";
 import { raceStride, stanceStarts } from "./stride.js";
@@ -73,7 +74,7 @@ function turfImpact(ctx, hoof, variant) {
 }
 
 export function raceAudio() {
-  let ctx, buffers, enabled = false, schedule = null;
+  let ctx, buffers, crowd, enabled = false, schedule = null;
   const voices = new Set();
 
   function play(source, gain, when, duration) {
@@ -89,7 +90,7 @@ export function raceAudio() {
     if (duration) source.stop(when + duration);
   }
 
-  function reset() {
+  function resetHooves() {
     schedule = null;
     for (const voice of voices) {
       const now = ctx.currentTime;
@@ -102,6 +103,11 @@ export function raceAudio() {
       }
     }
     voices.clear();
+  }
+
+  function reset() {
+    resetHooves();
+    crowd?.stop();
   }
 
   function strike(event, number, when, strength) {
@@ -119,6 +125,8 @@ export function raceAudio() {
       if (!enabled) {
         await ctx.resume();
         buffers ??= stanceStarts.map((_, hoof) => [0, 1, 2].map(variant => turfImpact(ctx, hoof, variant)));
+        crowd ??= grandstand(ctx);
+        crowd.prepare();
         enabled = true;
       } else {
         reset();
@@ -128,19 +136,22 @@ export function raceAudio() {
       return enabled;
     },
     reset,
-    step(race, runner, t, rate, until, replay) {
+    step(race, runner, t, rate, until, replay, frame, crowdMix = 1) {
       if (!enabled || ctx.state !== "running" || document.hidden || rate <= 0 || t < 0) {
         if (schedule) reset();
         return;
       }
       const now = ctx.currentTime;
-      const discontinuity = !schedule || schedule.race !== race.number || schedule.runner !== runner
-        || schedule.replay !== replay || schedule.rate !== rate
-        || Math.abs(t - (schedule.t + (now - schedule.now) * rate)) > 0.045 * rate;
-      if (discontinuity) {
-        if (schedule) reset();
+      const cut = !schedule || schedule.race !== race.number || schedule.replay !== replay || schedule.rate !== rate;
+      const drift = schedule ? Math.abs(t - (schedule.t + (now - schedule.now) * rate)) : 0;
+      if (cut || drift > 0.4 * rate) crowd.stop();
+      if (cut || schedule.runner !== runner || drift > 0.045 * rate) {
+        if (schedule) resetHooves();
         schedule = { race: race.number, runner, replay, rate, t, now, until: t };
       }
+      const live = frame ?? snapshotAt(race, t);
+      const finish = race.plan[live.order[0]].finish;
+      crowd.mix(crowdMix * crowdLevel(live, finish), t);
       // The output clock corresponds to the frame being heard. An output
       // timestamp can be absent during startup or on a suspended device.
       const stamp = ctx.getOutputTimestamp?.();

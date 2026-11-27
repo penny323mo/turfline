@@ -622,7 +622,7 @@ async function act(change, message = "", guard = game.race.number) {
     display();
   }
 }
-function syncSound(t) {
+function syncSound(frame) {
   const r = game.race;
   if (!r.plan) {
     audio.reset();
@@ -630,8 +630,9 @@ function syncSound(t) {
   }
   const rate = replay ? (replay.playing ? replay.rate : 0) : r.speed;
   const end = replay ? replay.to : runOutEnd(r);
-  const current = t ?? (replay ? replay.position() : elapsed(r));
-  audio.step(r, cameraState.selected, current, current >= end ? 0 : rate, end, !!replay);
+  const current = frame?.t ?? (replay ? replay.position() : elapsed(r));
+  const crowdMix = replay?.scope === "stride" ? 0 : window.speechSynthesis?.speaking ? 0.35 : 1;
+  audio.step(r, cameraState.selected, current, current >= end ? 0 : rate, end, !!replay, frame, crowdMix);
 }
 function tick() {
   const r = game.race,
@@ -737,7 +738,7 @@ function tick() {
   showRaceReport(r, snap?.t, replay);
   showLiveCommentary(r, snap, cameraState.selected, !!replay, cameraState.ticketPartner);
   showLatePick(r, snap, !!replay, ready);
-  syncSound(snap?.t);
+  syncSound(snap);
   drawRadar(snap);
 }
 $("closed").addEventListener("click", (e) => {
@@ -1153,7 +1154,8 @@ $("rules-button").onclick = () =>
     "<li><b>三種玩法</b><span>獨贏揀頭馬，位置揀頭兩名其中一匹，連贏揀頭兩匹而不分先後。派彩按落注時顯示嘅賠率計算，包含本金。</span></li>" +
     "<li><b>封盤及觀賽</b><span>確認投注後可撳注單下方嘅跟拍掣開跑。純觀賽可撳「不投注開跑」。點走位列馬號揀焦點。按 1 至 3 切換跟拍、俯視或長鏡，4 睇全場並可點馬，5 開自動導播，8 用雙駒跟拍睇焦點馬同對手。可選 2× 轉播。</span></li>" +
     "<li><b>尾段預測</b><span>頭馬轉入直路後，可以免費揀一次頭馬，最後 200 米截止。揀馬時排得越後，估中獎勵越多。</span></li>" +
-    "<li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>",
+    "<li><b>派彩及存檔</b><span>全場衝線後一次過結算，保存最近 20 場。本機瀏覽器記錄進度。代幣只供遊戲使用。餘額不足 10 枚且無未結算注項時可免費補充。</span></li></ul>" +
+    '<p>看台聲取自 Canukfa 嘅 <a href="https://freesound.org/people/Canukfa/sounds/143306/">crowd at the fence during a race.wav</a>，經剪輯、濾音、壓縮及循環處理。<a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a></p>',
   );
 $("history-button").onclick = () =>
   dialog(

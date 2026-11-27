@@ -10,6 +10,8 @@ const calls = [
   leader => "入彎，" + leader + "帶住馬群。",
   leader => "轉入直路，" + leader + "帶頭。",
   leader => "最後二百米！" + leader + "暫時領先。",
+  (leader, second, gap) => "最後一百米！" + leader + (gap <= 2.5
+    ? "同" + second + "爭先！" : "領先" + second + " " + gap.toFixed(1) + " 米。"),
   leader => leader + "率先衝線！",
 ];
 
@@ -62,7 +64,7 @@ export function createLiveCommentary(onFollow) {
     sound.textContent = voice ? "報馬 開" : "報馬 關";
     sound.setAttribute("aria-pressed", String(!!voice));
     sound.removeAttribute("aria-label");
-    if (voice && !panel.hidden && caption.textContent && section < 4) speak(caption.textContent);
+    if (voice && !panel.hidden && caption.textContent && section < calls.length - 1) speak(caption.textContent);
   };
   function cancelSpeech() {
     if (voice) speech.cancel();
@@ -94,14 +96,15 @@ export function createLiveCommentary(onFollow) {
       contender = undefined;
     }
     const d = frame.remaining;
-    const currentSection = d === 0 ? 4 : d <= 200 ? 3 : d <= LENGTH - bendExit ? 2 : d <= LENGTH - bendEntry ? 1 : 0;
+    const currentSection = d === 0 ? 5 : d <= 100 ? 4 : d <= 200 ? 3 : d <= LENGTH - bendExit ? 2 : d <= LENGTH - bendEntry ? 1 : 0;
     const first = frame.order[0];
     if (section !== currentSection) {
       section = currentSection;
       leader = first;
       contender = undefined;
-      const message = calls[currentSection](name(first));
-      if (race.phase === "running") announce(message, d === 0 || currentSection === 3);
+      const second = frame.order[1];
+      const message = calls[currentSection](name(first), name(second), frame.ds[first] - frame.ds[second]);
+      if (race.phase === "running") announce(message, currentSection >= 3);
       else caption.textContent = message;
     } else if (race.phase === "running" && d > 0) {
       if (first === leader) contender = undefined;

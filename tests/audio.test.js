@@ -1,9 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hoofContacts, raceAudio } from "../src/race-audio.js";
+import { crowdLevel } from "../src/grandstand.js";
 import { distance, newGame, RUN_OUT_SECONDS, start, stopDistance } from "../src/race.js";
 import { raceStride, stanceStarts } from "../src/stride.js";
 import { racingDistance } from "../src/racing-line.js";
+
+test("the closing crowd swells with the live lead battle and fades after the finish", () => {
+  const level = (remaining, gap, t) => crowdLevel({ remaining, ds: [501 - gap, 501, 315], order: [1, 0, 2], t }, 65);
+  assert.equal(level(241, 1, 50), 0);
+  assert.ok(level(200, 1, 54) < level(100, 1, 60));
+  assert.ok(level(100, 1, 60) > level(100, 9, 60));
+  assert.ok(level(100, 9, 60) > 0);
+  assert.ok(level(0, 1, 65) > level(0, 1, 68));
+  assert.ok(level(0, 1, 68) > 0);
+  assert.equal(level(0, 1, 71), 0);
+});
 
 test("four-beat sound follows each runner through the break, the finish and adjoining audio windows", () => {
   const game = newGame(() => 0.47);

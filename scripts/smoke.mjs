@@ -215,7 +215,9 @@ try {
     await page.locator("#live-chase").filter({ hasText: /4 號第 [1-6] 位 ／ 2 號第 [1-6] 位/ }).waitFor();
     await follow.waitFor({ state: "hidden" });
   }
+  const recording = page.waitForResponse(r => new URL(r.url()).pathname.endsWith("/audio/grandstand.mp3"));
   await page.locator("#stage #sound").click();
+  assert((await recording).ok());
   await waitText(page, "#sound", "音效 開");
   assert.equal(await peer.locator("#sound").getAttribute("aria-pressed"), "false");
   await waitText(peer, "#hero-bib", "01");
@@ -405,6 +407,7 @@ try {
   assert.equal(await page.locator("#form-guide .form-rank").count(), 2);
   await page.locator("#rules-button").click();
   assert(await page.locator("#dialog").isVisible());
+  assert(await page.locator('#dialog a[href="https://freesound.org/people/Canukfa/sounds/143306/"]').isVisible());
   await page.locator("#close").click();
   await page.locator("#full").click();
   await page.locator("#stage #start").click();
