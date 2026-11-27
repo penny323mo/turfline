@@ -100,6 +100,34 @@
 .meet-board .number-tile { margin-right: 5px; vertical-align: middle; }
 .meet-board td strong { color: var(--green); }
 .meet-rules { margin-top: 12px; color: var(--dim); font-size: 12px; line-height: 1.55; }
+.player-card {
+  margin-bottom: 14px;
+  padding: 0 10px;
+  border: 1px solid #475739;
+  border-radius: 5px;
+  background: #20291d;
+}
+.player-card summary { padding: 11px 0; cursor: pointer; font-weight: 700; }
+.card-score, .card-result { color: var(--green); font-size: 13px; font-variant-numeric: tabular-nums; }
+.card-result { margin-top: 4px; }
+.card-rounds, .card-runners { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.card-rounds { list-style: none; padding: 0; margin: 8px 0 12px; }
+.card-rounds li { margin: 0; padding: 5px; border: 1px solid #41513b; border-radius: 3px; }
+.card-rounds li[aria-current] { border-color: var(--green); }
+.card-rounds small, .card-runners small { display: block; color: #bdcbb7; font-size: 10px; }
+.card-rounds b, .card-runners strong { font-size: 12px; }
+.card-selection p, .card-feedback { font-size: 12px; color: #d2decc; line-height: 1.5; }
+.card-runners { margin-top: 6px; }
+.card-runners button { min-height: 44px; padding: 4px; text-align: left; background: #182218;
+  border: 1px solid #40503b; border-left: 3px solid var(--silk); border-radius: 3px; }
+.card-runners button[aria-pressed="true"] { background: #36432b; outline: 1px solid var(--green); }
+.card-runners button:disabled { opacity: 0.62; }
+.card-clear { min-height: 40px; color: #d1dec8; font-size: 12px; text-decoration: underline; }
+.card-feedback:not(:empty) { margin: 6px 0 12px; }
+@media (max-width: 450px) {
+  .card-runners { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-clear { min-height: 44px; }
+}
 .meet-result {
   display: flex;
   align-items: center;

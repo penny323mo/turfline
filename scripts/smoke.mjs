@@ -110,6 +110,11 @@ try {
     });
   await peer.goto(base);
   await ready(peer, dual ? "3d" : "2d");
+  await peer.locator("#player-card-button").click();
+  await peer.locator(".card-runners button").nth(4).click();
+  await waitText(peer, ".card-feedback", "第 1 場心水 · 紫夜追影");
+  await peer.locator("#close").click();
+  await waitText(page, "#start", "跟拍心水馬開跑　▶");
   console.log("Both race tabs loaded; second renderer:", dual ? "3d" : "2d");
   await prepare(page, "win", 0);
   await prepare(peer, "win", 1);
@@ -258,6 +263,8 @@ try {
   assert.deepEqual(await page.locator("#order-runners button").evaluateAll(
     (buttons) => buttons.map((b) => Number(b.dataset.runner))), order);
   await waitText(peer, "#meet-summary", "已跑 1／6 場");
+  const cardPoints = [10, 6, 4, 3, 2, 1][order.indexOf(4)];
+  await waitText(peer, "#player-card-button", "六場心水卡 · " + cardPoints + " 分");
   const meetPoints = await peer.locator("#meet-rows td strong").allTextContents();
   assert.deepEqual(meetPoints, ["10", "6", "4", "3", "2", "1"]);
   assert.equal(await peer.locator("#meet-rows .number-tile").first().innerText(),
@@ -371,6 +378,9 @@ try {
   await waitText(page, "#ticket-count", "0 張");
   await waitText(peer, "#meet-number", "R02");
   await waitText(peer, "#meet-round-label", "第 2／6 場");
+  await peer.locator("#player-card-button").click();
+  assert(await peer.locator(".card-runners button").nth(4).isDisabled());
+  await peer.locator("#close").click();
   await waitText(page, "#pace-name", "快步速");
   assert(await page.locator("#late-pick").isHidden());
   assert(await page.locator("#order-strip").isHidden());

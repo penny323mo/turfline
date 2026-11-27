@@ -32,7 +32,8 @@ import { rightLead } from "./gallop-lead.js";
 import { finishReplay } from "./replay.js";
 import { checkpoints, raceMoments } from "./race-moments.js";
 import { createRaceReport } from "./race-report.js";
-import { availableMeets, meetNumber, meetRound, meetStandings, pointsByRank, racesPerMeet } from "./meet.js";
+import { availableMeets, meetNumber, meetRound, meetStandings, playerCard, pointsByRank, racesPerMeet, selectMeetRunner } from "./meet.js";
+import { mountMeetCard } from "./meet-card.js";
 import { racePace } from "./race-pace.js";
 import { createLatePick, describeLatePick } from "./late-pick-ui.js";
 import { latePickForm, trendSeconds } from "./late-pick.js";
@@ -478,6 +479,11 @@ function display() {
     done = r.phase === "settled";
   const day = meetNumber(r.number);
   const round = meetRound(r.number);
+  const cardPick = game.meetPicks?.[r.number];
+  const card = challenge ? null : playerCard(game, day);
+  $("player-card-button").hidden = !!challenge;
+  $("player-card-button").disabled = !ready;
+  if (card) $("player-card-button").textContent = "六場心水卡 · " + card.points + " 分";
   if (replay && (replay.raceNumber !== r.number || !done)) leaveReplay();
   showReplayControls();
   $("balance").textContent = format(game.balance);
@@ -496,6 +502,7 @@ function display() {
   $("start").disabled = !ready || busy;
   const lastTicket = r.tickets.at(-1);
   $("start").textContent = challenge ? "開始挑戰　▶" : lastTicket ? "封盤開跑　▶" : "不投注開跑　▶";
+  if (!challenge && !lastTicket && cardPick != null) $("start").textContent = "跟拍心水馬開跑　▶";
   $("ticket-start").hidden = !opened || !lastTicket;
   $("ticket-start").disabled = !ready || busy;
   if (opened && lastTicket?.market === "pair") {
@@ -571,6 +578,8 @@ function display() {
       finishTime(r.plan[s.order[0]].finish) +
       (challenge ? "　·　挑戰得分 " + format(r.latePick?.paid ?? 0) + " 分"
         : "　·　本場淨額 " + (net >= 0 ? "+" : "") + format(net) + " 枚") + "</p>" +
+      (cardPick != null && card ? '<p class="card-result">' + horses[cardPick].name + '第 ' +
+        card.rounds[round - 1].rank + ' 名 · 心水 +' + card.rounds[round - 1].points + ' 分 · 賽日累計 ' + card.points + ' 分</p>' : '') +
       (challenge ? "" :
       '<button type="button" id="result-meet" class="meet-result" aria-haspopup="dialog">' +
       '<span>' + (standing.champion ? "賽日總冠軍" : "賽日積分領先") + '</span>' +
@@ -786,6 +795,8 @@ async function startWatching(ticket) {
   if (!started) return;
   if (ticket?.market === "pair") followPair(ticket);
   else if (ticket) updateCamera(ticket.picks[0], cameraState.cam === "pack" ? "track" : cameraState.cam);
+  else if (!game.race.tickets.length && game.meetPicks?.[game.race.number] != null)
+    updateCamera(game.meetPicks[game.race.number], cameraState.cam, null);
   $("stage").focus({ preventScroll: true });
   if (!$("stage").contains($("speed"))) $("stage").scrollIntoView({ block: "nearest" });
 }
@@ -1083,17 +1094,27 @@ function dialog(title, html) {
   $("dialog-body").innerHTML = html;
   $("dialog").showModal();
 }
-function showMeet() {
+let renderPlayerCard;
+function showMeet(event) {
   dialog("賽日積分",
     '<div class="meet-board"><div class="meet-board-header">' +
     '<label for="meet-select" class="sr-only">選擇賽日</label><select id="meet-select"></select>' +
     '<p id="meet-summary" role="status"></p></div>' +
+    '<details id="player-card" class="player-card"></details>' +
     '<table aria-label="馬匹賽日積分"><thead><tr>' +
     '<th scope="col">名次</th><th scope="col">馬匹</th><th scope="col">頭馬</th><th scope="col">積分</th>' +
     '</tr></thead><tbody id="meet-rows"></tbody></table>' +
     '<p class="meet-rules">每場第 1 至 6 名得 ' + pointsByRank.join("、") +
     ' 分。同分先比頭馬次數，再比最近一場名次。</p></div>');
   $("meet-select").onchange = renderMeet;
+  $("player-card").open = event.currentTarget.id === "player-card-button";
+  renderPlayerCard = mountMeetCard($("player-card"), async runner => {
+    if (busy || !ready) return;
+    if (!await act(g => selectMeetRunner(g, runner))) {
+      const feedback = $("player-card")?.querySelector(".card-feedback");
+      if (feedback) feedback.textContent = $("message").textContent;
+    }
+  });
   renderMeet();
 }
 function renderMeet() {
@@ -1106,6 +1127,7 @@ function renderMeet() {
     picker.replaceChildren(...options);
   }
   picker.value = String(selection);
+  renderPlayerCard(game, selection);
   const { rows, completed, champion } = meetStandings(game.history, selection);
   const summary = champion
     ? "總冠軍 " + horses[champion.runner].name
@@ -1119,6 +1141,7 @@ function renderMeet() {
   }).join("");
 }
 $("meet-button").onclick = showMeet;
+$("player-card-button").onclick = showMeet;
 $("close").onclick = () => $("dialog").close();
 $("dialog").onclick = (e) => {
   if (e.target === $("dialog")) $("dialog").close();

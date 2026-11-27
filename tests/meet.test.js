@@ -1,8 +1,45 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { availableMeets, meetNumber, meetRound, meetStandings } from "../src/meet.js";
+import { availableMeets, meetNumber, meetRound, meetStandings, playerCard, selectMeetRunner } from "../src/meet.js";
+import { newGame, start, settle, next } from "../src/race.js";
 
 const result = (number, order = [0, 1, 2, 3, 4, 5]) => ({ number, order, paid: 0, stake: 0 });
+
+test("a six-race player card locks on start, reserves each horse once and resets for the next meet", () => {
+  const rng = () => 0.43;
+  const game = newGame(rng);
+  const balance = game.balance;
+  let total = 0;
+  for (let runner = 0; runner < 6; runner++) {
+    if (runner) assert.throws(() => selectMeetRunner(game, runner - 1), /已用過/);
+    selectMeetRunner(game, runner);
+    selectMeetRunner(game, null);
+    assert.equal(playerCard(game, 1).rounds[runner].runner, undefined);
+    selectMeetRunner(game, runner);
+    start(game, 0, rng);
+    assert.throws(() => selectMeetRunner(game, null), /已封盤/);
+    assert.equal(playerCard(game, 1).points, total);
+    settle(game, 100000);
+    total += [10, 6, 4, 3, 2, 1][game.race.settlement.order.indexOf(runner)];
+    assert.equal(playerCard(game, 1).points, total);
+    next(game, rng);
+  }
+  assert.equal(game.balance, balance);
+  selectMeetRunner(game, 0);
+  assert.equal(playerCard(game, 2).points, 0);
+  assert.equal(playerCard(game, 1).points, total);
+});
+
+test("the player's day net includes prediction rewards and earlier unselected races", () => {
+  const history = [{ ...result(6), stake: 100, paid: 75, latePick: { paid: 40 } }, result(7)];
+  const old = { history };
+  const card = playerCard(old, 1);
+  assert.equal(card.net, 15);
+  assert.equal(card.points, 0);
+  assert.equal(card.rounds[5].runner, undefined);
+  assert.equal(card.rounds[5].net, 15);
+  assert.equal(card.rounds[0].net, null);
+});
 
 test("a legacy race history scores the current and recent complete six-race days", () => {
   const history = Array.from({ length: 20 }, (_, i) => result(22 - i));
