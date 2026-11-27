@@ -36,13 +36,20 @@ test("both forelegs blend into the chest without overstretching the skin through
   const length = ([i, j]) => body.getVertexPosition(i, a).applyMatrix4(body.matrixWorld)
     .distanceTo(body.getVertexPosition(j, b).applyMatrix4(body.matrixWorld));
   const rest = edges.map(length);
+  // Opposite surfaces of each forearm and cannon at matching heights, in metres.
+  const forearms = [[4751,4743], [8591,8579]];
+  for (const pair of [[4313,4305], [8148,8131]]) assert.ok(length(pair) > 0.078, "cannon width " + length(pair));
   let stretch = 0;
   for (let d = 60; d <= 67.2; d += 0.05) {
     horse.seekDistance(d, true, 1200);
     horse.group.updateMatrixWorld(true);
+    for (const pair of forearms) {
+      const width = length(pair);
+      assert.ok(width > 0.145 && width < 0.19, "forearm width in stride " + width);
+    }
     edges.forEach((edge, i) => { stretch = Math.max(stretch, length(edge) / rest[i]); });
   }
-  assert.ok(stretch < 2.5, "Maximum chest edge stretch " + stretch.toFixed(2) + "×");
+  assert.ok(stretch < 2.10, "Maximum chest edge stretch " + stretch.toFixed(2) + "×");
 });
 
 test("all six lanes turn continuously and measure the length of their own racing line", () => {
@@ -336,7 +343,7 @@ test("mounted download reproduces the in-game hooves, nose and jockey when sampl
   playback.clipAction(clip).play();
   function samples(group) {
     const body = group.getObjectByName("Object_11");
-    const points = [11901,13645,12585,14273,3998,7064,1600,10801,3716].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
+    const points = [11901,13645,12585,14273,3998,7064,1600,10801,3716,4751,4743,8591,8579].map(i => body.getVertexPosition(i,new Vector3()).applyMatrix4(body.matrixWorld));
     const jacket = group.getObjectByName("JockeyUpperBody"), reins = group.getObjectByName("RacingReins");
     for (const side of ["Right","Left"]) {
       const wrist = jacket.skeleton.bones.findIndex(b => b.name === "Jockey"+side+"Hand");

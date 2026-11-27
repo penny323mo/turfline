@@ -129,7 +129,7 @@ try {
         title: "Crimson Comet — mounted racehorse", horseAuthor: "Ayan",
         horseSource: "https://sketchfab.com/3d-models/animated-rigged-horse-with-saddle-b08743c2c4734fb98a4e0a2f5767c318",
         horseLicense: "https://creativecommons.org/licenses/by/4.0/",
-        adaptation: "Turfline racing saddle, twin reins, articulated jockey, colours, four-beat parade walk, both gallop leads, flying changes, gate break and pull-up. Metres, positive Z forward.",
+        adaptation: "Turfline foreleg contours and shoulder skinning, racing saddle, twin reins, articulated jockey, colours, four-beat parade walk, both gallop leads, flying changes, gate break and pull-up. Metres, positive Z forward.",
       };
     } }));
     const bytes = new Uint8Array(await exporter.parseAsync(model, { binary: true, animations: clips }));

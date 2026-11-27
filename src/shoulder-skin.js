@@ -16,7 +16,10 @@ export function bindShoulderSkin(body, scale, ground) {
     body.getVertexPosition(i, point).applyMatrix4(body.matrixWorld);
     const height = (point.y + ground) * scale;
     const lateral = Math.abs(point.z * scale);
-    const transfer = MathUtils.smoothstep(height, 0.60, 1.12) *
+    // Spread the bend along the thicker upper arm; the inside of the chest
+    // settles onto the breast slightly earlier than the outside of the leg.
+    const medial = 1 - MathUtils.smoothstep(lateral, 0.08, 0.21);
+    const transfer = MathUtils.smoothstep(height + 0.06 * medial, 0.50, 1.22) *
       (1 - MathUtils.smoothstep(lateral, 0.28, 0.65));
     if (!transfer) continue;
     const weights = new Map();
