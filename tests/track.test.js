@@ -36,6 +36,21 @@ test("both forelegs blend into the chest without overstretching the skin through
   const length = ([i, j]) => body.getVertexPosition(i, a).applyMatrix4(body.matrixWorld)
     .distanceTo(body.getVertexPosition(j, b).applyMatrix4(body.matrixWorld));
   const rest = edges.map(length);
+  // Adjacent faces on each side of the foreleg-to-chest transition.
+  const folds = [
+    [[591, 5242, 12166], [591, 12166, 5219]],
+    [[439, 4955, 12044], [443, 12044, 4955]],
+    [[2585, 13790, 8782], [2590, 8782, 13790]],
+    [[2744, 9050, 13888], [2744, 13888, 9071]],
+  ];
+  function foldAngle([first, second]) {
+    const faceNormal = face => {
+      const [p, q, r] = face.map(i => body.getVertexPosition(i, new Vector3()));
+      return q.sub(p).cross(r.sub(p)).normalize();
+    };
+    return faceNormal(first).angleTo(faceNormal(second));
+  }
+  const standingAngles = folds.map(foldAngle);
   // Opposite surfaces of each forearm and cannon at matching heights, in metres.
   const forearms = [[4751,4743], [8591,8579]];
   for (const pair of [[4313,4305], [8148,8131]]) assert.ok(length(pair) > 0.078, "cannon width " + length(pair));
@@ -48,6 +63,9 @@ test("both forelegs blend into the chest without overstretching the skin through
       assert.ok(width > 0.145 && width < 0.19, "forearm width in stride " + width);
     }
     edges.forEach((edge, i) => { stretch = Math.max(stretch, length(edge) / rest[i]); });
+    folds.forEach((fold, i) => {
+      assert.ok(foldAngle(fold) - standingAngles[i] < Math.PI / 3, "Sharp fold between chest and foreleg");
+    });
   }
   assert.ok(stretch < 2.10, "Maximum chest edge stretch " + stretch.toFixed(2) + "×");
 });
